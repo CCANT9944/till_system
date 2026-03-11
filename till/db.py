@@ -4,10 +4,10 @@ from contextlib import contextmanager
 import datetime
 import sqlite3
 from pathlib import Path
-from typing import List
+from typing import Iterable, List
 
 from .backup_service import BackupService
-from .models import Product, Shift, Transaction, TransactionItem
+from .models import ItemSalesSummary, Product, Shift, Transaction, TransactionItem
 from .payments import CARD_PAYMENT_METHOD_SQL, get_payment_method_total_sql
 
 DB_FILE = Path(__file__).parent / "till.db"
@@ -654,6 +654,72 @@ class Database:
                 edited_at=datetime.datetime.fromisoformat(row[4]) if row[4] else None,
             )
             for row in rows
+        ]
+
+    def list_item_sales(
+        self,
+        *,
+        shift_ids: Iterable[int] | None = None,
+        start_at: datetime.datetime | None = None,
+        end_at: datetime.datetime | None = None,
+    ) -> list[ItemSalesSummary]:
+        params: list[object] = []
+        clauses: list[str] = []
+
+        if shift_ids is not None:
+            normalized_shift_ids = [int(shift_id) for shift_id in shift_ids]
+            if not normalized_shift_ids:
+                return []
+            placeholders = ", ".join("?" for _ in normalized_shift_ids)
+            clauses.append(f"transactions.shift_id IN ({placeholders})")
+            params.extend(normalized_shift_ids)
+
+        if start_at is not None:
+            clauses.append("transactions.timestamp >= ?")
+            params.append(start_at.isoformat())
+        if end_at is not None:
+            clauses.append("transactions.timestamp <= ?")
+            params.append(end_at.isoformat())
+
+        where_sql = ""
+        if clauses:
+            where_sql = "WHERE " + " AND ".join(clauses)
+
+        c = self.conn.cursor()
+        c.execute(
+            f"""
+            SELECT
+                COALESCE(transaction_items.product_name, ''),
+                COALESCE(transaction_items.category, ''),
+                COALESCE(transaction_items.sub_category, ''),
+                COALESCE(SUM(transaction_items.quantity), 0),
+                COALESCE(SUM(transaction_items.quantity * transaction_items.unit_price), 0),
+                COUNT(DISTINCT transaction_items.transaction_id)
+            FROM transaction_items
+            INNER JOIN transactions
+                ON transactions.id = transaction_items.transaction_id
+            {where_sql}
+            GROUP BY
+                transaction_items.product_name,
+                transaction_items.category,
+                transaction_items.sub_category
+            ORDER BY
+                COALESCE(SUM(transaction_items.quantity), 0) DESC,
+                COALESCE(SUM(transaction_items.quantity * transaction_items.unit_price), 0) DESC,
+                lower(COALESCE(transaction_items.product_name, '')) ASC
+            """,
+            tuple(params),
+        )
+        return [
+            ItemSalesSummary(
+                product_name=row[0],
+                category=row[1],
+                sub_category=row[2],
+                quantity_sold=int(row[3] or 0),
+                revenue=float(row[4] or 0.0),
+                transaction_count=int(row[5] or 0),
+            )
+            for row in c.fetchall()
         ]
 
     def get_daily_summary(self, day: datetime.date | None = None) -> dict[str, float | int]:

@@ -4,12 +4,13 @@ Simple point-of-sale application using PyQt6 and SQLite.
 
 ## Structure
 
-- `models.py` – data classes for product, cart items, and transactions.
-- `db.py` – SQLite database layer with product and transaction tables.
+- `models.py` – data classes for product, cart items, transactions, shifts, and reporting summaries.
+- `db.py` – SQLite database layer with product, transaction, shift, backup, and reporting queries.
 - `backup_service.py` – backup/restore storage, rotation, and restore helpers for the SQLite database.
 - `controller.py` – business logic for inventory and cart operations.
 - `bills_mixin.py` – Bills tab UI, reports, and backup/restore actions shared by the main window.
-- `product_details_mixin.py` – Product Details tab UI for searchable catalog browsing, touch-friendly table layout, and reused product add/edit/delete actions.
+- `product_details_mixin.py` – Product Details tab UI for searchable catalog browsing and reused product add/edit/delete actions.
+- `reports_mixin.py` – Reports tab UI for session/date filtering and item-sales summaries.
 - `grid_layout.py` – persistent grid layout presets for the till and rearrange screens.
 - `button_rows.py` – shared helpers for category/subcategory button rows.
 - `dialog_helpers.py` – reusable picker and manager utility dialogs.
@@ -66,11 +67,12 @@ Simple point-of-sale application using PyQt6 and SQLite.
 - Under **Design**: `Color Presets`, `Adjust Product Font`.
 - Under **Design** there is now `Grid Layout`, which lets you switch between `6 x 6`, `5 x 6`, and `4 x 6` product grid presets.
 - Under **Design** there is also `Rearrange Grid Items`, which lets you drag and drop the products shown in the current category/subcategory grid into exact row and column slots.
-- Products are presented as large, touch‑friendly buttons arranged in a grid rather than a plain list. Buttons are now **square** in shape, compact, and the grid starts at the top of the view. Click a product button to select it (highlighted in green), then press **Add to cart** or use the Manager menu for protected actions.
+- Products are presented as square buttons arranged in a compact grid rather than a plain list. The grid starts at the top of the view, and the category and subcategory rows are sized to match the visible product board. Click a product button to select it (highlighted in green), then press **Add to cart** or use the Manager menu for protected actions.
 - The product area now uses a matching `6 x 6` layout style for both the main till grid and the rearrange screen, so placement is consistent while editing positions.
 - The chosen grid preset is saved and reused the next time the till starts.
 - Manager actions (add/delete products) have been grouped under a **Manager** button; selecting either option requires entering a PIN.
-- The cart now lives on the right side of the screen at the same vertical height as the product area, with the total displayed below the cart items.
+- The Till tab now uses a more compact layout overall, including tighter typography, smaller action buttons, and narrower supporting panels so the whole window fits comfortably at a smaller default size.
+- The cart now lives in a dedicated right-hand panel separated from the product area by a vertical divider, with the total displayed below the cart items and the `Add to cart`, `Remove from cart`, and `Checkout` actions stacked directly beneath it.
 - Add items from inventory to cart.
 - View cart and total; remove items.
 - Checkout now opens a payment selector with `Cash`, `Visa`, `Mastercard`, and `Amex` buttons, and the chosen method is shown on saved bills, receipts, and reports.
@@ -80,6 +82,8 @@ Simple point-of-sale application using PyQt6 and SQLite.
 - Transactions are now linked to shifts, and the Bills tab can `Close Day` to end the current shift and start a new one without deleting bill history.
 - The Bills tab can also filter by shift, so a single closed day can be inspected on its own without mixing it with the current open shift.
 - The Bills tab now includes an `End Of Day Report` view for the selected shift, and closing the day immediately opens a report for the shift that was just closed, including separate `Visa`, `Mastercard`, and `Amex` totals alongside cash and combined card totals.
+- A `Reports` tab shows per-item sales summaries, including quantity sold and revenue, with filters for one or more sessions and optional date/time ranges.
+- Reports default to the current open session when no manual filters are selected, and they refresh automatically after checkout, bill edits, restores, and day-close actions.
 - Multi-step database writes now run atomically for checkout, bill edits, and shift closing, so failed writes roll back instead of leaving partial bill or shift data behind.
 - The app now closes the SQLite connection cleanly on shutdown to reduce the chance of stale or half-open database state on restart.
 - The Bills tab now includes `Backup Data` and `Restore Backup` actions, both PIN-protected, so staff can create a timestamped copy of the live till database before risky changes or at the end of a shift.

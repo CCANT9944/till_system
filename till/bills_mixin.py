@@ -13,28 +13,34 @@ CURRENCY = "£"
 class BillsMixin:
     def build_bills_tab(self):
         layout = QtWidgets.QVBoxLayout()
+        layout.setContentsMargins(10, 10, 10, 10)
+        layout.setSpacing(8)
         self.bills_tab.setLayout(layout)
 
         filter_layout = QtWidgets.QHBoxLayout()
         filter_layout.setSpacing(8)
         layout.addLayout(filter_layout)
-        filter_layout.addWidget(QtWidgets.QLabel("Shift:"))
+        filter_label = QtWidgets.QLabel("Shift:")
+        filter_label.setStyleSheet("font-size: 10pt;")
+        filter_layout.addWidget(filter_label)
         self.bills_shift_filter = QtWidgets.QComboBox()
+        self.bills_shift_filter.setMinimumHeight(34)
+        self.bills_shift_filter.setStyleSheet("font-size: 10pt;")
         self.bills_shift_filter.currentIndexChanged.connect(self.handle_bills_shift_changed)
         filter_layout.addWidget(self.bills_shift_filter)
 
         bills_action_layout = QtWidgets.QHBoxLayout()
-        bills_action_layout.setSpacing(6)
+        bills_action_layout.setSpacing(4)
         filter_layout.addLayout(bills_action_layout)
 
-        def make_bills_action_button(label: str, handler, *, width: int = 92) -> QtWidgets.QPushButton:
+        def make_bills_action_button(label: str, handler, *, width: int = 84) -> QtWidgets.QPushButton:
             button = QtWidgets.QPushButton(label)
-            button.setFixedSize(width, 50)
+            button.setFixedSize(width, 42)
             button.setStyleSheet(
                 "QPushButton {"
-                " font-size: 11pt;"
+                " font-size: 10pt;"
                 " min-height: 0px;"
-                " padding: 4px 8px;"
+                " padding: 3px 6px;"
                 " border: 1px solid #6f6f6f;"
                 " border-radius: 0px;"
                 " background-color: #2f2f2f;"
@@ -45,40 +51,41 @@ class BillsMixin:
             button.clicked.connect(handler)
             return button
 
-        close_day_button = make_bills_action_button("Close", self.close_current_day)
-        bills_action_layout.addWidget(close_day_button)
+        self.close_day_button = make_bills_action_button("Close", self.close_current_day)
+        bills_action_layout.addWidget(self.close_day_button)
 
-        shift_report_button = make_bills_action_button(
+        self.shift_report_button = make_bills_action_button(
             "End Of Day",
             self.show_selected_shift_report,
-            width=122,
+            width=108,
         )
-        bills_action_layout.addWidget(shift_report_button)
+        bills_action_layout.addWidget(self.shift_report_button)
 
-        backup_button = make_bills_action_button("Backup", self.create_data_backup)
-        bills_action_layout.addWidget(backup_button)
+        self.backup_button = make_bills_action_button("Backup", self.create_data_backup)
+        bills_action_layout.addWidget(self.backup_button)
 
-        restore_button = make_bills_action_button("Restore", self.restore_data_backup)
-        bills_action_layout.addWidget(restore_button)
+        self.restore_button = make_bills_action_button("Restore", self.restore_data_backup)
+        bills_action_layout.addWidget(self.restore_button)
 
-        edit_bill_button = make_bills_action_button("Edit", self.edit_selected_bill)
-        bills_action_layout.addWidget(edit_bill_button)
+        self.edit_bill_button = make_bills_action_button("Edit", self.edit_selected_bill)
+        bills_action_layout.addWidget(self.edit_bill_button)
 
-        reprint_button = make_bills_action_button("Receipt", self.reprint_selected_receipt)
-        bills_action_layout.addWidget(reprint_button)
+        self.reprint_button = make_bills_action_button("Receipt", self.reprint_selected_receipt)
+        bills_action_layout.addWidget(self.reprint_button)
 
         filter_layout.addStretch()
 
-        content_layout = QtWidgets.QHBoxLayout()
-        layout.addLayout(content_layout, 1)
+        self.bills_content_layout = QtWidgets.QHBoxLayout()
+        self.bills_content_layout.setSpacing(8)
+        layout.addLayout(self.bills_content_layout, 1)
         summary_group = QtWidgets.QGroupBox("Shift Summary")
         summary_group.setSizePolicy(
             QtWidgets.QSizePolicy.Policy.Maximum,
             QtWidgets.QSizePolicy.Policy.Expanding,
         )
         summary_group.setStyleSheet(
-            "QGroupBox { font-size: 11pt; font-weight: 600; }"
-            "QLabel { font-size: 10pt; }"
+            "QGroupBox { font-size: 10pt; font-weight: 600; }"
+            "QLabel { font-size: 9pt; }"
         )
         summary_layout = QtWidgets.QFormLayout()
         summary_layout.setLabelAlignment(QtCore.Qt.AlignmentFlag.AlignLeft)
@@ -122,19 +129,24 @@ class BillsMixin:
         summary_layout.addRow("Mastercard =", self.bills_mastercard_label)
         summary_layout.addRow("Amex =", self.bills_amex_label)
         summary_layout.addRow("TOTAL =", self.bills_total_label)
-        content_layout.addWidget(summary_group, 0)
+        self.bills_content_layout.addWidget(summary_group, 0)
 
         left_panel = QtWidgets.QWidget()
         left_panel.setSizePolicy(
             QtWidgets.QSizePolicy.Policy.Expanding,
             QtWidgets.QSizePolicy.Policy.Expanding,
         )
-        left_panel.setMinimumWidth(420)
+        left_panel.setMinimumWidth(380)
         left_layout = QtWidgets.QVBoxLayout()
+        left_layout.setContentsMargins(0, 0, 0, 0)
+        left_layout.setSpacing(6)
         left_panel.setLayout(left_layout)
-        left_layout.addWidget(QtWidgets.QLabel("Bills history"))
+        left_title = QtWidgets.QLabel("Bills history")
+        left_title.setStyleSheet("font-size: 10pt; font-weight: 600;")
+        left_layout.addWidget(left_title)
         self.bills_list = QtWidgets.QListWidget()
-        self.bills_list.setMinimumWidth(420)
+        self.bills_list.setMinimumWidth(380)
+        self.bills_list.setStyleSheet("font-size: 10pt;")
         self.bills_list.itemSelectionChanged.connect(self.show_selected_bill_details)
         left_layout.addWidget(self.bills_list, 1)
 
@@ -143,16 +155,20 @@ class BillsMixin:
             QtWidgets.QSizePolicy.Policy.Expanding,
             QtWidgets.QSizePolicy.Policy.Expanding,
         )
-        right_panel.setMinimumWidth(420)
+        right_panel.setMinimumWidth(380)
         right_layout = QtWidgets.QVBoxLayout()
+        right_layout.setContentsMargins(0, 0, 0, 0)
+        right_layout.setSpacing(6)
         right_panel.setLayout(right_layout)
         details_header_layout = QtWidgets.QHBoxLayout()
         details_header_layout.setContentsMargins(0, 0, 0, 0)
-        details_header_layout.addWidget(QtWidgets.QLabel("Bill details"))
+        details_title = QtWidgets.QLabel("Bill details")
+        details_title.setStyleSheet("font-size: 10pt; font-weight: 600;")
+        details_header_layout.addWidget(details_title)
         details_header_layout.addStretch()
         self.bill_status_badge = QtWidgets.QLabel("")
         self.bill_status_badge.setStyleSheet(
-            "background-color: #5a4321; color: #ffe7b3; border-radius: 10px; padding: 4px 10px; font-size: 10pt; font-weight: 600;"
+            "background-color: #5a4321; color: #ffe7b3; border-radius: 10px; padding: 3px 8px; font-size: 9pt; font-weight: 600;"
         )
         self.bill_status_badge.setSizePolicy(
             QtWidgets.QSizePolicy.Policy.Maximum,
@@ -163,11 +179,12 @@ class BillsMixin:
         right_layout.addLayout(details_header_layout)
         self.bill_detail = QtWidgets.QTextEdit()
         self.bill_detail.setReadOnly(True)
-        self.bill_detail.setMinimumWidth(420)
+        self.bill_detail.setMinimumWidth(380)
+        self.bill_detail.setStyleSheet("font-size: 10pt;")
         right_layout.addWidget(self.bill_detail, 1)
 
-        content_layout.addWidget(left_panel, 1)
-        content_layout.addWidget(right_panel, 1)
+        self.bills_content_layout.addWidget(left_panel, 1)
+        self.bills_content_layout.addWidget(right_panel, 1)
 
     def format_shift_report_text(
         self,
@@ -296,6 +313,7 @@ class BillsMixin:
             return
 
         self.refresh_bills(refresh_shift_filter=False)
+        self.refresh_reports(refresh_shift_filter=False)
         self.show_selected_bill_details()
 
     def show_selected_shift_report(self):
@@ -402,6 +420,7 @@ class BillsMixin:
         self.refresh_cart()
         self.refresh_products()
         self.refresh_bills()
+        self.refresh_reports()
         QtWidgets.QMessageBox.information(
             self,
             "Restore Backup",
@@ -484,6 +503,7 @@ class BillsMixin:
         closed_shift, new_shift = self.inventory.db.close_current_shift()
         backup_error = self.create_automatic_backup()
         self.refresh_bills(selected_shift_id=new_shift.id)
+        self.refresh_reports()
         self.show_shift_report_dialog(
             closed_shift.id,
             title=f"End Of Day Report - Shift #{closed_shift.id}",

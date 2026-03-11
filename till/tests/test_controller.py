@@ -16,6 +16,7 @@ if importlib.util.find_spec("PyQt6") is not None:
 from interface.till.controller import InventoryController, CartController
 from interface.till.categories import DEFAULT_CATEGORIES, DEFAULT_SUBCATEGORY_MAP
 from interface.till.db import Database
+from interface.till.grid_widgets import PRODUCT_TILE_SIZE
 from interface.till.models import Product, Transaction, TransactionItem
 
 
@@ -42,6 +43,11 @@ def _layout_texts(layout):
     return texts
 
 
+def _expected_board_width(win):
+    horizontal_spacing = max(win.product_layout.horizontalSpacing(), 0)
+    return (win.grid_columns * PRODUCT_TILE_SIZE) + ((win.grid_columns - 1) * horizontal_spacing) + 4
+
+
 def _table_rows(table):
     rows = []
     for row in range(table.rowCount()):
@@ -61,6 +67,16 @@ def _select_product_details_row(win, product_name):
             win.product_details_table.selectRow(row)
             return
     raise AssertionError(f"Could not find product details row for {product_name!r}")
+
+
+def _set_reports_shift_selection(win, shift_ids):
+    wanted = set(shift_ids)
+    win.reports_shift_list.blockSignals(True)
+    for index in range(win.reports_shift_list.count()):
+        item = win.reports_shift_list.item(index)
+        item.setSelected(item.data(QtCore.Qt.ItemDataRole.UserRole) in wanted)
+    win.reports_shift_list.blockSignals(False)
+    win.refresh_reports(refresh_shift_filter=False)
 
 
 def test_inventory_add_and_list(tmp_path):
@@ -187,6 +203,143 @@ def test_explicit_grid_positions_display(tmp_path):
     assert positions["Second"] == (1, 0)
 
 
+def test_grid_layout_width_tracks_configured_columns(tmp_path):
+    try:
+        from interface.till.views import MainWindow
+    except ImportError:
+        pytest.skip("PyQt6 not available")
+
+    db_file = tmp_path / "grid_width.db"
+    db = Database(path=db_file)
+    inv = InventoryController(db=db)
+    for column in range(6):
+        inv.add_product(
+            f"Item {column + 1}",
+            3.00 + column,
+            category="beer",
+            sub_category="Draught",
+            tile_row=0,
+            tile_column=column,
+        )
+
+    win = MainWindow()
+    win.inventory = inv
+    win.grid_columns = 6
+    win.grid_rows = 6
+    win.apply_grid_layout_settings()
+    win.current_category = "beer"
+    win.update_subcategories("beer")
+    win.current_subcategory = "Draught"
+    win.refresh_products()
+    win.resize(1600, 900)
+    win.show()
+    QtWidgets.QApplication.processEvents()
+
+    expected_board_width = _expected_board_width(win)
+    frame_width = win.product_area.frameWidth() * 2
+    scrollbar_extent = win.product_area.style().pixelMetric(
+        QtWidgets.QStyle.PixelMetric.PM_ScrollBarExtent
+    )
+
+    assert win.product_container.minimumWidth() == expected_board_width
+    assert win.product_container.maximumWidth() == expected_board_width
+    assert win.product_container.width() == expected_board_width
+    assert win.product_area.maximumWidth() == expected_board_width + frame_width + scrollbar_extent
+    assert win.product_area.width() <= expected_board_width + frame_width + scrollbar_extent
+    assert win.cat_widget.width() == expected_board_width + frame_width + scrollbar_extent
+    assert win.subcat_widget.width() == expected_board_width + frame_width + scrollbar_extent
+
+
+def test_cart_panel_has_right_side_delimiter_and_bottom_actions(tmp_path):
+    try:
+        from interface.till.views import MainWindow
+    except ImportError:
+        pytest.skip("PyQt6 not available")
+
+    db_file = tmp_path / "cart_panel_layout.db"
+    db = Database(path=db_file)
+    inv = InventoryController(db=db)
+    inv.add_product("Tea", 2.00, category="Hot Drinks")
+
+    win = MainWindow()
+    win.inventory = inv
+    win.current_category = "Hot Drinks"
+    win.refresh_products()
+    win.resize(1400, 900)
+    win.show()
+    QtWidgets.QApplication.processEvents()
+
+    product_area_left = win.product_area.mapTo(win.till_tab, QtCore.QPoint(0, 0)).x()
+    cart_delimiter_left = win.cart_delimiter.mapTo(win.till_tab, QtCore.QPoint(0, 0)).x()
+    cart_panel_left = win.cart_panel.mapTo(win.till_tab, QtCore.QPoint(0, 0)).x()
+    cart_button_panel_left = win.cart_button_panel.mapTo(win.till_tab, QtCore.QPoint(0, 0)).x()
+    cart_button_panel_top = win.cart_button_panel.mapTo(win.till_tab, QtCore.QPoint(0, 0)).y()
+    add_button_left = win.to_cart_button.mapTo(win.till_tab, QtCore.QPoint(0, 0)).x()
+    add_button_top = win.to_cart_button.mapTo(win.till_tab, QtCore.QPoint(0, 0)).y()
+    checkout_button_top = win.checkout_button.mapTo(win.till_tab, QtCore.QPoint(0, 0)).y()
+
+    assert win.cart_panel.frameShape() == QtWidgets.QFrame.Shape.StyledPanel
+    assert win.cart_delimiter.frameShape() == QtWidgets.QFrame.Shape.VLine
+    assert win.cart_panel.minimumWidth() == 250
+    assert win.cart_panel.maximumWidth() == 340
+    assert win.cart_column.height() >= win.product_area.height() - 2
+    assert win.cart_delimiter.height() >= win.product_area.height() - 2
+    assert cart_panel_left > product_area_left + win.product_area.width()
+    assert cart_delimiter_left > product_area_left + win.product_area.width()
+    assert cart_button_panel_left == cart_panel_left
+    assert win.cart_button_panel.width() == win.cart_panel.width()
+    assert add_button_left == cart_button_panel_left
+    assert win.to_cart_button.width() == win.cart_button_panel.width()
+    assert add_button_top >= cart_button_panel_top
+    assert win.remove_button.width() == win.cart_button_panel.width()
+    assert win.checkout_button.width() == win.cart_button_panel.width()
+    assert win.remove_button.y() > win.to_cart_button.y() + win.to_cart_button.height() - 1
+    assert win.checkout_button.y() > win.remove_button.y() + win.remove_button.height() - 1
+    assert win.cart_button_panel.y() > win.cart_panel.y() + win.cart_panel.height() - 1
+    assert checkout_button_top >= cart_button_panel_top
+    assert win.manager_button.mapTo(win.till_tab, QtCore.QPoint(0, 0)).x() < cart_button_panel_left
+
+
+def test_bills_panels_use_compact_widths(tmp_path):
+    try:
+        from interface.till.views import MainWindow
+    except ImportError:
+        pytest.skip("PyQt6 not available")
+
+    db_file = tmp_path / "bills_compact_widths.db"
+    db = Database(path=db_file)
+    inv = InventoryController(db=db)
+    inv.add_product("Tea", 2.00, category="Hot Drinks")
+
+    win = MainWindow()
+    win.inventory = inv
+    win.refresh_bills()
+
+    assert win.bills_list.minimumWidth() == 380
+    assert win.bill_detail.minimumWidth() == 380
+    assert win.bills_content_layout.spacing() == 8
+    assert win.close_day_button.width() == 84
+    assert win.shift_report_button.width() == 108
+
+
+def test_reports_panels_use_compact_widths(tmp_path):
+    try:
+        from interface.till.views import MainWindow
+    except ImportError:
+        pytest.skip("PyQt6 not available")
+
+    db_file = tmp_path / "reports_compact_widths.db"
+    db = Database(path=db_file)
+    inv = InventoryController(db=db)
+    inv.add_product("Tea", 2.00, category="Hot Drinks")
+
+    win = MainWindow()
+    win.inventory = inv
+    win.refresh_reports()
+
+    assert win.reports_shift_list.minimumWidth() == 300
+
+
 def test_filter_required(tmp_path, monkeypatch):
     # if no category selected, the product list shows placeholder
     try:
@@ -209,6 +362,38 @@ def test_filter_required(tmp_path, monkeypatch):
     assert win.product_layout.count() == 1
     widget = win.product_layout.itemAt(0).widget()
     assert widget and "select category" in widget.text().lower()
+
+
+def test_category_and_subcategory_buttons_are_compact_and_delimited(tmp_path):
+    try:
+        from interface.till.views import MainWindow
+    except ImportError:
+        pytest.skip("PyQt6 not available")
+
+    db_file = tmp_path / "filter_buttons.db"
+    db = Database(path=db_file)
+    inv = InventoryController(db=db)
+    inv.add_product("Lager", 3.00, category="Beer", sub_category="Draught")
+
+    win = MainWindow()
+    win.inventory = inv
+    win.rebuild_category_buttons()
+    win.update_subcategories("Beer")
+
+    beer_button = next(
+        button for label, button in win.category_buttons.items() if label.lower() == "beer"
+    )
+    draught_button = next(
+        button for label, button in win.subcategory_buttons.items() if label.lower() == "draught"
+    )
+
+    for button in (beer_button, draught_button):
+        style = button.styleSheet().lower()
+        assert button.maximumHeight() == 32
+        assert button.sizeHint().height() <= 38
+        assert "font-size: 9pt" in style
+        assert "border: 1px solid" in style
+        assert "background-color" in style
 
 
 def test_category_without_subcategory_displays_items(tmp_path):
@@ -340,7 +525,11 @@ def test_product_details_tab_lists_all_products_with_separate_category_columns(t
     win.refresh_products()
 
     tab_labels = [win.main_tabs.tabText(index) for index in range(win.main_tabs.count())]
-    assert tab_labels == ["Till", "Bills", "Product Details"]
+    assert tab_labels == ["Till", "Bills", "Product Details", "Reports"]
+    tab_style = win.styleSheet().lower()
+    assert "qtabbar::tab:selected" in tab_style
+    assert "background-color: #3f6b3f" in tab_style
+    assert "border-color: #80b780" in tab_style
 
     assert win.product_layout.count() == 1
     assert win.product_details_table.horizontalHeaderItem(0).text() == "Name"
@@ -396,7 +585,7 @@ def test_product_details_search_filters_table_without_affecting_till_grid(tmp_pa
     assert win.product_details_count_label.text() == "3 products"
 
 
-def test_product_details_layout_is_touch_friendly(tmp_path):
+def test_product_details_layout_remains_usable_in_compact_mode(tmp_path):
     try:
         from interface.till.views import MainWindow
     except ImportError:
@@ -411,12 +600,12 @@ def test_product_details_layout_is_touch_friendly(tmp_path):
     win.inventory = inv
     win.refresh_products()
 
-    assert win.product_details_search.minimumHeight() >= 48
-    assert win.product_details_add_button.minimumHeight() >= 48
-    assert win.product_details_edit_button.minimumHeight() >= 48
-    assert win.product_details_delete_button.minimumHeight() >= 48
-    assert win.product_details_table.verticalHeader().defaultSectionSize() >= 46
-    assert win.product_details_table.horizontalHeader().height() >= 42
+    assert win.product_details_search.minimumHeight() >= 40
+    assert win.product_details_add_button.minimumHeight() >= 40
+    assert win.product_details_edit_button.minimumHeight() >= 40
+    assert win.product_details_delete_button.minimumHeight() >= 40
+    assert win.product_details_table.verticalHeader().defaultSectionSize() >= 40
+    assert win.product_details_table.horizontalHeader().height() >= 38
 
 
 def test_product_details_actions_refresh_table(tmp_path, monkeypatch):
@@ -866,6 +1055,69 @@ def test_close_current_shift_preserves_history_and_opens_new_shift(tmp_path):
     assert new_summary["count"] == 0
 
 
+def test_database_can_aggregate_item_sales_by_shift_and_time_range(tmp_path):
+    db_file = tmp_path / "reports_aggregate.db"
+    db = Database(path=db_file)
+    inv = InventoryController(db=db)
+    tea = inv.add_product("Tea", 2.00, category="Hot Drinks")
+    cake = inv.add_product("Cake", 4.00, category="Snacks")
+
+    first_cart = CartController(db=db)
+    first_cart.add_item(tea, quantity=1)
+    first_txn = first_cart.checkout(payment_method="Cash")
+    db.update_transaction(
+        Transaction(
+            id=first_txn.id,
+            payment_method=first_txn.payment_method,
+            timestamp=datetime.datetime(2026, 3, 10, 9, 0, 0),
+            items=first_txn.items,
+        )
+    )
+    closed_shift, open_shift = db.close_current_shift(
+        closed_at=datetime.datetime(2026, 3, 10, 10, 0, 0)
+    )
+
+    second_cart = CartController(db=db)
+    second_cart.add_item(tea, quantity=2)
+    second_cart.add_item(cake, quantity=1)
+    second_txn = second_cart.checkout(payment_method="Visa")
+    db.update_transaction(
+        Transaction(
+            id=second_txn.id,
+            payment_method=second_txn.payment_method,
+            timestamp=datetime.datetime(2026, 3, 11, 9, 0, 0),
+            items=second_txn.items,
+        )
+    )
+
+    closed_shift_rows = {
+        item.product_name: item for item in db.list_item_sales(shift_ids=[closed_shift.id])
+    }
+    assert closed_shift_rows["Tea"].quantity_sold == 1
+    assert closed_shift_rows["Tea"].revenue == pytest.approx(2.0)
+
+    all_shift_rows = {
+        item.product_name: item
+        for item in db.list_item_sales(shift_ids=[closed_shift.id, open_shift.id])
+    }
+    assert all_shift_rows["Tea"].quantity_sold == 3
+    assert all_shift_rows["Tea"].revenue == pytest.approx(6.0)
+    assert all_shift_rows["Tea"].transaction_count == 2
+    assert all_shift_rows["Cake"].quantity_sold == 1
+    assert all_shift_rows["Cake"].revenue == pytest.approx(4.0)
+
+    date_filtered_rows = {
+        item.product_name: item
+        for item in db.list_item_sales(
+            start_at=datetime.datetime(2026, 3, 11, 0, 0, 0),
+            end_at=datetime.datetime(2026, 3, 11, 23, 59, 59),
+        )
+    }
+    assert set(date_filtered_rows) == {"Tea", "Cake"}
+    assert date_filtered_rows["Tea"].quantity_sold == 2
+    assert date_filtered_rows["Cake"].quantity_sold == 1
+
+
 def test_bills_list_refreshes_after_checkout(tmp_path):
     try:
         from interface.till.views import MainWindow
@@ -897,6 +1149,136 @@ def test_bills_list_refreshes_after_checkout(tmp_path):
     assert "coffee" in win.bill_detail.toPlainText().lower()
     assert "total: £5.00".lower() in win.bill_detail.toPlainText().lower()
     assert len(db.backups.list_backups()) == 1
+
+
+def test_reports_tab_defaults_to_current_open_session(tmp_path):
+    try:
+        from interface.till.views import MainWindow
+    except ImportError:
+        pytest.skip("PyQt6 not available")
+
+    db_file = tmp_path / "reports_default_ui.db"
+    db = Database(path=db_file)
+    inv = InventoryController(db=db)
+    tea = inv.add_product("Tea", 2.00, category="Hot Drinks")
+    cake = inv.add_product("Cake", 4.00, category="Snacks")
+
+    first_cart = CartController(db=db)
+    first_cart.add_item(tea)
+    first_cart.checkout(payment_method="Cash")
+    _, open_shift = db.close_current_shift()
+
+    second_cart = CartController(db=db)
+    second_cart.add_item(cake)
+    second_cart.checkout(payment_method="Visa")
+
+    win = MainWindow()
+    win.inventory = inv
+    win.cart = CartController(db=db)
+    win.refresh_reports()
+
+    assert win.reports_sessions_label.text() == f"Current open session #{open_shift.id}"
+    assert win.reports_item_count_label.text() == "1"
+    assert win.reports_units_sold_label.text() == "1"
+    assert win.reports_revenue_label.text() == "£4.00"
+    assert _table_rows(win.reports_table) == [["Cake", "Snacks", "", "1", "£4.00"]]
+
+
+def test_reports_tab_can_aggregate_selected_sessions(tmp_path):
+    try:
+        from interface.till.views import MainWindow
+    except ImportError:
+        pytest.skip("PyQt6 not available")
+
+    db_file = tmp_path / "reports_selected_sessions_ui.db"
+    db = Database(path=db_file)
+    inv = InventoryController(db=db)
+    tea = inv.add_product("Tea", 2.00, category="Hot Drinks")
+    cake = inv.add_product("Cake", 4.00, category="Snacks")
+
+    first_cart = CartController(db=db)
+    first_cart.add_item(tea)
+    first_cart.checkout(payment_method="Cash")
+    closed_shift, open_shift = db.close_current_shift()
+
+    second_cart = CartController(db=db)
+    second_cart.add_item(tea, quantity=2)
+    second_cart.add_item(cake)
+    second_cart.checkout(payment_method="Visa")
+
+    win = MainWindow()
+    win.inventory = inv
+    win.cart = CartController(db=db)
+    win.refresh_reports()
+    _set_reports_shift_selection(win, [closed_shift.id, open_shift.id])
+
+    rows_by_name = {row[0]: row for row in _table_rows(win.reports_table)}
+    assert win.reports_sessions_label.text() == "2 selected sessions"
+    assert win.reports_item_count_label.text() == "2"
+    assert win.reports_units_sold_label.text() == "4"
+    assert win.reports_revenue_label.text() == "£10.00"
+    assert rows_by_name["Tea"] == ["Tea", "Hot Drinks", "", "3", "£6.00"]
+    assert rows_by_name["Cake"] == ["Cake", "Snacks", "", "1", "£4.00"]
+
+
+def test_reports_tab_can_filter_by_date_range_without_session_selection(tmp_path):
+    try:
+        from interface.till.views import MainWindow
+    except ImportError:
+        pytest.skip("PyQt6 not available")
+
+    db_file = tmp_path / "reports_date_range_ui.db"
+    db = Database(path=db_file)
+    inv = InventoryController(db=db)
+    tea = inv.add_product("Tea", 2.00, category="Hot Drinks")
+    cake = inv.add_product("Cake", 4.00, category="Snacks")
+
+    first_cart = CartController(db=db)
+    first_cart.add_item(tea)
+    first_txn = first_cart.checkout(payment_method="Cash")
+    db.update_transaction(
+        Transaction(
+            id=first_txn.id,
+            payment_method=first_txn.payment_method,
+            timestamp=datetime.datetime(2026, 3, 10, 9, 0, 0),
+            items=first_txn.items,
+        )
+    )
+    db.close_current_shift(closed_at=datetime.datetime(2026, 3, 10, 10, 0, 0))
+
+    second_cart = CartController(db=db)
+    second_cart.add_item(cake)
+    second_txn = second_cart.checkout(payment_method="Visa")
+    db.update_transaction(
+        Transaction(
+            id=second_txn.id,
+            payment_method=second_txn.payment_method,
+            timestamp=datetime.datetime(2026, 3, 11, 12, 30, 0),
+            items=second_txn.items,
+        )
+    )
+
+    win = MainWindow()
+    win.inventory = inv
+    win.cart = CartController(db=db)
+    win.refresh_reports()
+
+    _set_reports_shift_selection(win, [])
+    win.reports_from_checkbox.setChecked(True)
+    win.reports_from_datetime.setDateTime(
+        QtCore.QDateTime(QtCore.QDate(2026, 3, 11), QtCore.QTime(0, 0))
+    )
+    win.reports_to_checkbox.setChecked(True)
+    win.reports_to_datetime.setDateTime(
+        QtCore.QDateTime(QtCore.QDate(2026, 3, 11), QtCore.QTime(23, 59))
+    )
+    win.refresh_reports(refresh_shift_filter=False)
+
+    assert win.reports_sessions_label.text() == "All sessions in selected time range"
+    assert win.reports_item_count_label.text() == "1"
+    assert win.reports_units_sold_label.text() == "1"
+    assert win.reports_revenue_label.text() == "£4.00"
+    assert _table_rows(win.reports_table) == [["Cake", "Snacks", "", "1", "£4.00"]]
 
 
 def test_checkout_still_succeeds_when_automatic_backup_fails(tmp_path, monkeypatch):
@@ -994,6 +1376,10 @@ def test_edit_bill_refreshes_history_details_and_reports(tmp_path, monkeypatch):
     assert win.bills_cash_label.text() == "£0.00"
     assert win.bills_card_label.text() == "£4.50"
     assert win.bills_mastercard_label.text() == "£4.50"
+    assert win.reports_item_count_label.text() == "1"
+    assert win.reports_units_sold_label.text() == "1"
+    assert win.reports_revenue_label.text() == "£4.50"
+    assert _table_rows(win.reports_table) == [["Mocha", "Hot Drinks", "", "1", "£4.50"]]
 
     report_text = win.format_shift_report_text(
         db.get_shift_summary(txn.shift_id),
@@ -1130,6 +1516,10 @@ def test_restore_backup_refreshes_bills_and_clears_cart(tmp_path, monkeypatch):
     assert "Cash" in win.bills_list.item(0).text()
     assert "Visa" not in win.bills_list.item(0).text()
     assert win.cart_list.count() == 0
+    assert win.reports_item_count_label.text() == "1"
+    assert win.reports_units_sold_label.text() == "1"
+    assert win.reports_revenue_label.text() == "£3.00"
+    assert _table_rows(win.reports_table) == [["Toast", "Snacks", "", "1", "£3.00"]]
     assert any("Safety backup saved as" in message for message in info_messages)
 
 
@@ -1181,11 +1571,17 @@ def test_close_day_keeps_bill_history_and_resets_shift_summary(tmp_path, monkeyp
     assert win.bills_count_label.text() == "0"
     assert win.bills_amex_label.text() == "£0.00"
     assert f"#{after_close_shift} (Open)" == win.bills_shift_label.text()
+    assert win.reports_sessions_label.text() == f"Current open session #{after_close_shift}"
+    assert win.reports_item_count_label.text() == "0"
+    assert win.reports_units_sold_label.text() == "0"
+    assert win.reports_revenue_label.text() == "£0.00"
     assert len(db.backups.list_backups()) == 2
 
     win.set_bills_shift_filter(before_close_shift)
     assert win.bills_list.count() == 1
     assert win.bills_amex_label.text() == "£3.00"
+    _set_reports_shift_selection(win, [before_close_shift])
+    assert _table_rows(win.reports_table) == [["Toast", "Snacks", "", "1", "£3.00"]]
 
 
 def test_close_day_still_succeeds_when_automatic_backup_fails(tmp_path, monkeypatch):

@@ -66,3 +66,13 @@ class Shift:
     @property
     def is_open(self) -> bool:
         return self.closed_at is None
+
+
+@dataclass
+class ItemSalesSummary:
+    product_name: str = ""
+    category: str = ""
+    sub_category: str = ""
+    quantity_sold: int = 0
+    revenue: float = 0.0
+    transaction_count: int = 0

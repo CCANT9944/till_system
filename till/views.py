@@ -7,6 +7,7 @@ from .controller import InventoryController, CartController
 from .db import close_db
 from .models import Product, Transaction
 from .product_details_mixin import ProductDetailsMixin
+from .reports_mixin import ReportsMixin
 from .color_presets import get_preset_color_value, load_color_presets, save_color_presets
 from .color_preset_dialog import edit_color_presets_dialog
 from .categories import (
@@ -33,21 +34,35 @@ from .product_dialogs import prompt_edit_product, prompt_new_product
 CURRENCY = "£"
 
 
-class MainWindow(QtWidgets.QMainWindow, BillsMixin, ProductDetailsMixin):
+class MainWindow(QtWidgets.QMainWindow, BillsMixin, ProductDetailsMixin, ReportsMixin):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Till System")
-        self.resize(1080, 660)
-        # make UI elements larger for touch screens
+        self.resize(980, 600)
         base_font = self.font()
-        base_font.setPointSize(12)
+        base_font.setPointSize(10)
         self.setFont(base_font)
         self.setStyleSheet(
-            "QPushButton { min-height: 40px; font-size: 14pt; border-radius: 5px; padding: 8px; }"
+            "QPushButton { min-height: 34px; font-size: 11pt; border-radius: 4px; padding: 5px 8px; }"
             "QPushButton:checked { background-color: #4caf50; color: white; }"
             "QScrollArea { background: transparent; }"
-            "QLabel { font-size: 14pt; }"
-            "QTabBar::tab { min-width: 150px; min-height: 52px; font-size: 14pt; padding: 8px 18px; }"
+            "QLabel { font-size: 11pt; }"
+            "QTabBar::tab { min-width: 132px; min-height: 44px; font-size: 11pt; padding: 6px 14px; border: 1px solid #666666; border-radius: 4px; background-color: #242424; color: #f2f2f2; margin-right: 4px; }"
+            "QTabBar::tab:hover { background-color: #2f2f2f; }"
+            "QTabBar::tab:selected { background-color: #3f6b3f; border-color: #80b780; color: white; }"
+        )
+        self.filter_button_style = (
+            "QPushButton {"
+            " min-height: 28px;"
+            " font-size: 9pt;"
+            " padding: 2px 9px;"
+            " border: 1px solid #666666;"
+            " border-radius: 4px;"
+            " background-color: #242424;"
+            " color: #f2f2f2;"
+            " }"
+            "QPushButton:hover { background-color: #2f2f2f; }"
+            "QPushButton:checked { background-color: #3f6b3f; border-color: #80b780; color: white; }"
         )
 
         self.inventory = InventoryController()
@@ -63,6 +78,8 @@ class MainWindow(QtWidgets.QMainWindow, BillsMixin, ProductDetailsMixin):
 
         self.till_tab = QtWidgets.QWidget()
         layout = QtWidgets.QVBoxLayout()
+        layout.setContentsMargins(10, 10, 10, 10)
+        layout.setSpacing(10)
         self.till_tab.setLayout(layout)
         self.main_tabs.addTab(self.till_tab, "Till")
 
@@ -71,6 +88,9 @@ class MainWindow(QtWidgets.QMainWindow, BillsMixin, ProductDetailsMixin):
 
         self.product_details_tab = QtWidgets.QWidget()
         self.main_tabs.addTab(self.product_details_tab, "Product Details")
+
+        self.reports_tab = QtWidgets.QWidget()
+        self.main_tabs.addTab(self.reports_tab, "Reports")
 
         # category selector buttons
         self.categories, self.subcategory_map = load_category_config()
@@ -81,26 +101,53 @@ class MainWindow(QtWidgets.QMainWindow, BillsMixin, ProductDetailsMixin):
         self.current_category: str | None = None
         self.current_subcategory: str | None = None
 
+        content_layout = QtWidgets.QHBoxLayout()
+        content_layout.setContentsMargins(0, 0, 0, 0)
+        content_layout.setSpacing(12)
+        layout.addLayout(content_layout, 1)
+
+        left_column = QtWidgets.QWidget()
+        left_layout = QtWidgets.QVBoxLayout()
+        left_layout.setContentsMargins(0, 0, 0, 0)
+        left_layout.setSpacing(8)
+        left_column.setLayout(left_layout)
+        content_layout.addWidget(left_column, 1)
+
         self.cat_widget = QtWidgets.QWidget()
         self.cat_layout = QtWidgets.QHBoxLayout()
         self.cat_layout.setContentsMargins(0, 0, 0, 0)
         self.cat_layout.setSpacing(8)
         self.cat_widget.setLayout(self.cat_layout)
-        layout.addWidget(self.cat_widget)
+        self.cat_widget.setSizePolicy(
+            QtWidgets.QSizePolicy.Policy.Fixed,
+            QtWidgets.QSizePolicy.Policy.Fixed,
+        )
+        left_layout.addWidget(self.cat_widget)
 
         self.subcat_widget = QtWidgets.QWidget()
         self.subcat_layout = QtWidgets.QHBoxLayout()
         self.subcat_layout.setContentsMargins(0, 0, 0, 0)
         self.subcat_layout.setSpacing(8)
         self.subcat_widget.setLayout(self.subcat_layout)
+        self.subcat_widget.setSizePolicy(
+            QtWidgets.QSizePolicy.Policy.Fixed,
+            QtWidgets.QSizePolicy.Policy.Fixed,
+        )
         self.subcat_widget.setVisible(False)
-        layout.addWidget(self.subcat_widget)
+        left_layout.addWidget(self.subcat_widget)
 
         # area to display product buttons
-        split_layout = QtWidgets.QHBoxLayout()
-        layout.addLayout(split_layout)
-
         self.product_area = QtWidgets.QScrollArea()
+        self.product_area.setAlignment(
+            QtCore.Qt.AlignmentFlag.AlignTop | QtCore.Qt.AlignmentFlag.AlignLeft
+        )
+        self.product_area.setSizeAdjustPolicy(
+            QtWidgets.QAbstractScrollArea.SizeAdjustPolicy.AdjustToContents
+        )
+        self.product_area.setSizePolicy(
+            QtWidgets.QSizePolicy.Policy.Maximum,
+            QtWidgets.QSizePolicy.Policy.Expanding,
+        )
         self.product_area.setWidgetResizable(True)
         self.product_container = QtWidgets.QWidget()
         self.product_layout = QtWidgets.QGridLayout()
@@ -111,7 +158,7 @@ class MainWindow(QtWidgets.QMainWindow, BillsMixin, ProductDetailsMixin):
         )
         self.product_container.setLayout(self.product_layout)
         self.product_area.setWidget(self.product_container)
-        split_layout.addWidget(self.product_area, 3)
+        left_layout.addWidget(self.product_area, 1)
 
         self.product_buttons: dict[int, QtWidgets.QPushButton] = {}
         self.product_colors: dict[int, str] = {}
@@ -127,50 +174,156 @@ class MainWindow(QtWidgets.QMainWindow, BillsMixin, ProductDetailsMixin):
         self.selected_product_id: int | None = None
 
         # cart area on right
-        cart_widget = QtWidgets.QWidget()
+        self.cart_panel = QtWidgets.QFrame()
+        self.cart_panel.setObjectName("cartPanel")
+        self.cart_panel.setFrameShape(QtWidgets.QFrame.Shape.StyledPanel)
+        self.cart_panel.setFrameShadow(QtWidgets.QFrame.Shadow.Plain)
+        self.cart_panel.setLineWidth(1)
+        self.cart_panel.setSizePolicy(
+            QtWidgets.QSizePolicy.Policy.Preferred,
+            QtWidgets.QSizePolicy.Policy.Expanding,
+        )
+        self.cart_panel.setMinimumWidth(250)
+        self.cart_panel.setMaximumWidth(340)
+        self.cart_panel.setStyleSheet(
+            "QFrame#cartPanel { background-color: #1f1f1f; border: 1px solid #4a4a4a; border-radius: 6px; }"
+            "QFrame#cartPanel QListWidget, QFrame#cartPanel QLabel { background: transparent; border: none; }"
+        )
         cart_layout = QtWidgets.QVBoxLayout()
-        cart_widget.setLayout(cart_layout)
+        cart_layout.setContentsMargins(10, 10, 10, 10)
+        cart_layout.setSpacing(8)
+        self.cart_panel.setLayout(cart_layout)
+        cart_header = QtWidgets.QLabel("Cart")
+        cart_header.setStyleSheet("font-size: 11pt; font-weight: 600;")
+        cart_layout.addWidget(cart_header)
         self.cart_list = QtWidgets.QListWidget()
-        cart_layout.addWidget(self.cart_list)
+        self.cart_list.setSizePolicy(
+            QtWidgets.QSizePolicy.Policy.Expanding,
+            QtWidgets.QSizePolicy.Policy.Expanding,
+        )
+        self.cart_list.setStyleSheet("font-size: 10pt;")
+        cart_layout.addWidget(self.cart_list, 1)
         self.total_label = QtWidgets.QLabel(f"Total: {CURRENCY}0.00")
+        self.total_label.setStyleSheet("font-size: 11pt; font-weight: 600;")
         cart_layout.addWidget(self.total_label)
-        split_layout.addWidget(cart_widget, 1)
+
+        self.cart_delimiter = QtWidgets.QFrame()
+        self.cart_delimiter.setFrameShape(QtWidgets.QFrame.Shape.VLine)
+        self.cart_delimiter.setFrameShadow(QtWidgets.QFrame.Shadow.Sunken)
+        self.cart_delimiter.setLineWidth(1)
+        content_layout.addWidget(self.cart_delimiter, 0)
+
+        self.cart_column = QtWidgets.QWidget()
+        right_layout = QtWidgets.QVBoxLayout()
+        right_layout.setContentsMargins(0, 0, 0, 0)
+        right_layout.setSpacing(10)
+        self.cart_column.setLayout(right_layout)
+        right_layout.addWidget(self.cart_panel, 1)
+        content_layout.addWidget(self.cart_column, 0)
 
         button_layout = QtWidgets.QHBoxLayout()
+        button_layout.setContentsMargins(0, 0, 0, 0)
+        button_layout.setSpacing(6)
         layout.addLayout(button_layout)
 
-        # manager dialog entry point
-        manager_button = QtWidgets.QPushButton("Manager")
-        manager_button.clicked.connect(self.open_manager_dialog)
-        button_layout.addWidget(manager_button)
+        compact_button_style = (
+            "QPushButton {"
+            " font-size: 10pt;"
+            " min-height: 32px;"
+            " padding: 3px 8px;"
+            " border: 1px solid #5a5a5a;"
+            " border-radius: 4px;"
+            " background-color: #2b2b2b;"
+            " }"
+            "QPushButton:hover { background-color: #343434; }"
+            "QPushButton:pressed { background-color: #252525; }"
+        )
 
-        to_cart_button = QtWidgets.QPushButton("Add to cart")
-        to_cart_button.clicked.connect(self.add_selected_to_cart)
-        button_layout.addWidget(to_cart_button)
+        left_button_layout = QtWidgets.QHBoxLayout()
+        left_button_layout.setContentsMargins(0, 0, 0, 0)
+        left_button_layout.setSpacing(8)
+        button_layout.addLayout(left_button_layout, 1)
 
-        remove_button = QtWidgets.QPushButton("Remove from cart")
-        remove_button.clicked.connect(self.remove_selected_from_cart)
-        button_layout.addWidget(remove_button)
+        self.manager_button = QtWidgets.QPushButton("Manager")
+        self.manager_button.clicked.connect(self.open_manager_dialog)
+        self.manager_button.setStyleSheet(compact_button_style)
+        left_button_layout.addWidget(self.manager_button)
 
-        checkout_button = QtWidgets.QPushButton("Checkout")
-        checkout_button.clicked.connect(self.perform_checkout)
-        button_layout.addWidget(checkout_button)
+        self.to_cart_button = QtWidgets.QPushButton("Add to cart")
+        self.to_cart_button.clicked.connect(self.add_selected_to_cart)
+
+        left_button_layout.addStretch()
+
+        self.cart_button_panel = QtWidgets.QWidget()
+        self.cart_button_panel.setSizePolicy(
+            QtWidgets.QSizePolicy.Policy.Preferred,
+            QtWidgets.QSizePolicy.Policy.Fixed,
+        )
+        self.cart_button_panel.setMinimumWidth(250)
+        self.cart_button_panel.setMaximumWidth(340)
+        cart_button_layout = QtWidgets.QVBoxLayout()
+        cart_button_layout.setContentsMargins(0, 0, 0, 0)
+        cart_button_layout.setSpacing(8)
+        self.cart_button_panel.setLayout(cart_button_layout)
+        right_layout.addWidget(self.cart_button_panel, 0)
+
+        self.to_cart_button.setStyleSheet(compact_button_style)
+        self.to_cart_button.setSizePolicy(
+            QtWidgets.QSizePolicy.Policy.Expanding,
+            QtWidgets.QSizePolicy.Policy.Fixed,
+        )
+        cart_button_layout.addWidget(self.to_cart_button)
+
+        self.remove_button = QtWidgets.QPushButton("Remove from cart")
+        self.remove_button.clicked.connect(self.remove_selected_from_cart)
+        self.remove_button.setStyleSheet(compact_button_style)
+        self.remove_button.setSizePolicy(
+            QtWidgets.QSizePolicy.Policy.Expanding,
+            QtWidgets.QSizePolicy.Policy.Fixed,
+        )
+        cart_button_layout.addWidget(self.remove_button)
+
+        self.checkout_button = QtWidgets.QPushButton("Checkout")
+        self.checkout_button.clicked.connect(self.perform_checkout)
+        self.checkout_button.setStyleSheet(compact_button_style)
+        self.checkout_button.setSizePolicy(
+            QtWidgets.QSizePolicy.Policy.Expanding,
+            QtWidgets.QSizePolicy.Policy.Fixed,
+        )
+        cart_button_layout.addWidget(self.checkout_button)
+
+        button_layout.addStretch()
 
         self.build_bills_tab()
         self.build_product_details_tab()
+        self.build_reports_tab()
         self.rebuild_category_buttons()
         self.update_subcategories(None)
 
         self.refresh_products()
         self.refresh_bills()
+        self.refresh_reports()
 
     def apply_grid_layout_settings(self):
         self.products_per_row = self.grid_columns
         horizontal_spacing = max(self.product_layout.horizontalSpacing(), 0)
         vertical_spacing = max(self.product_layout.verticalSpacing(), 0)
-        min_width = (self.grid_columns * PRODUCT_TILE_SIZE) + ((self.grid_columns - 1) * horizontal_spacing) + 4
-        min_height = (self.grid_rows * PRODUCT_TILE_SIZE) + ((self.grid_rows - 1) * vertical_spacing) + 4
-        self.product_container.setMinimumSize(min_width, min_height)
+        board_width = (self.grid_columns * PRODUCT_TILE_SIZE) + ((self.grid_columns - 1) * horizontal_spacing) + 4
+        board_height = (self.grid_rows * PRODUCT_TILE_SIZE) + ((self.grid_rows - 1) * vertical_spacing) + 4
+        frame_width = self.product_area.frameWidth() * 2
+        scrollbar_extent = self.product_area.style().pixelMetric(
+            QtWidgets.QStyle.PixelMetric.PM_ScrollBarExtent
+        )
+        row_width = board_width + frame_width + scrollbar_extent
+        self.product_container.setFixedWidth(board_width)
+        self.product_container.setMinimumHeight(board_height)
+        self.product_area.setMaximumWidth(row_width)
+        self.cat_widget.setFixedWidth(row_width)
+        self.subcat_widget.setFixedWidth(row_width)
+        self.cat_widget.updateGeometry()
+        self.subcat_widget.updateGeometry()
+        self.product_area.updateGeometry()
+        self.product_container.updateGeometry()
 
     def refresh_products(self):
         self.refresh_product_details()
@@ -247,6 +400,7 @@ class MainWindow(QtWidgets.QMainWindow, BillsMixin, ProductDetailsMixin):
             [format_display_name(category) for category in self.categories],
             self._handle_category_button,
         )
+        self.apply_filter_button_style(self.category_buttons)
         sync_exclusive_button_row(
             self.category_buttons,
             format_display_name(self.current_category) if self.current_category else None,
@@ -412,12 +566,21 @@ class MainWindow(QtWidgets.QMainWindow, BillsMixin, ProductDetailsMixin):
                 subcategories,
                 self.select_subcategory,
             )
+            self.apply_filter_button_style(self.subcategory_buttons)
             self.subcat_widget.setVisible(True)
         else:
             self.subcategory_buttons = {}
             clear_layout_widgets(self.subcat_layout)
             self.subcat_widget.setVisible(False)
         sync_exclusive_button_row(self.subcategory_buttons, self.current_subcategory)
+
+    def apply_filter_button_style(
+        self,
+        buttons: dict[str, QtWidgets.QPushButton],
+    ) -> None:
+        for button in buttons.values():
+            button.setStyleSheet(self.filter_button_style)
+            button.setFixedHeight(32)
 
     def select_subcategory(self, sub: str, checked: bool):
         if checked:
@@ -738,6 +901,7 @@ class MainWindow(QtWidgets.QMainWindow, BillsMixin, ProductDetailsMixin):
         backup_error = self.create_automatic_backup()
         self.refresh_cart()
         self.refresh_bills()
+        self.refresh_reports()
         self.show_receipt_dialog(txn, title="Receipt")
         if backup_error is not None:
             QtWidgets.QMessageBox.warning(
