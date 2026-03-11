@@ -2,6 +2,8 @@ venv/
 .venv/
 __pycache__/
 .pytest_cache/
+**/.pytest_cache/
+till/.pytest_cache/
 *.py[cod]
 
 # Local till runtime data
