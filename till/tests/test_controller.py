@@ -14,8 +14,23 @@ if importlib.util.find_spec("PyQt6") is not None:
     QtCore = importlib.import_module("PyQt6.QtCore")
 
 from interface.till.controller import InventoryController, CartController
+from interface.till.categories import DEFAULT_CATEGORIES, DEFAULT_SUBCATEGORY_MAP
 from interface.till.db import Database
 from interface.till.models import Product, Transaction, TransactionItem
+
+
+@pytest.fixture(autouse=True)
+def default_main_window_category_config(monkeypatch):
+    import interface.till.views as views
+
+    monkeypatch.setattr(
+        views,
+        "load_category_config",
+        lambda: (
+            list(DEFAULT_CATEGORIES),
+            {key: list(values) for key, values in DEFAULT_SUBCATEGORY_MAP.items()},
+        ),
+    )
 
 
 def _layout_texts(layout):

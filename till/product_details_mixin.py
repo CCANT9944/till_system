@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from PyQt6 import QtCore, QtWidgets
 
-from .categories import resolve_category_name, resolve_subcategory_name
+from .categories import format_display_name, resolve_category_name, resolve_subcategory_name
 from .models import Product
 
 CURRENCY = "£"
@@ -193,10 +193,12 @@ class ProductDetailsMixin:
         return any(search_query in (value or "").lower() for value in haystacks)
 
     def resolve_product_details_category(self, product) -> str:
-        return resolve_category_name(self.categories, product.category)
+        return format_display_name(resolve_category_name(self.categories, product.category))
 
     def resolve_product_details_subcategory(self, product, category: str) -> str:
-        return resolve_subcategory_name(self.subcategory_map, category, product.sub_category)
+        return format_display_name(
+            resolve_subcategory_name(self.subcategory_map, category, product.sub_category)
+        )
 
     def edit_product_from_details(self) -> None:
         if not self.check_pin():

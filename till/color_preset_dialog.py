@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from PyQt6 import QtGui, QtWidgets
 
+from .categories import format_display_name
+
 
 ColorPresetResult = tuple[dict[str, str], dict[tuple[str, str], str], bool]
 
@@ -60,7 +62,7 @@ def edit_color_presets_dialog(
             lambda cat=category: temp_categories.get(cat, ""),
             lambda value, cat=category: temp_categories.__setitem__(cat, value),
         )
-        form.addRow(f"{category.capitalize()}:", picker)
+        form.addRow(f"{format_display_name(category)}:", picker)
 
     for category, subcategories in subcategory_map.items():
         for subcategory in subcategories:
@@ -68,7 +70,10 @@ def edit_color_presets_dialog(
                 lambda cat=category, sub=subcategory: temp_subcategories.get((cat, sub), ""),
                 lambda value, cat=category, sub=subcategory: temp_subcategories.__setitem__((cat, sub), value),
             )
-            form.addRow(f"{category.capitalize()} / {subcategory}:", picker)
+            form.addRow(
+                f"{format_display_name(category)} / {format_display_name(subcategory)}:",
+                picker,
+            )
 
     button_box = QtWidgets.QDialogButtonBox(
         QtWidgets.QDialogButtonBox.StandardButton.Save

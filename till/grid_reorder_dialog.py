@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from PyQt6 import QtWidgets
 
+from .categories import format_display_name
 from .grid_widgets import GridReorderBoard
 from .models import Product
 
@@ -21,9 +22,9 @@ def show_grid_reorder_dialog(
     dialog.resize(900, 760)
 
     layout = QtWidgets.QVBoxLayout(dialog)
-    title = category.capitalize()
+    title = format_display_name(category)
     if subcategory:
-        title = f"{title} / {subcategory}"
+        title = f"{title} / {format_display_name(subcategory)}"
     layout.addWidget(
         QtWidgets.QLabel(
             f"Drag and drop each tile into the exact grid cell you want for {title}."

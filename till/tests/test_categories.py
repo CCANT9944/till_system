@@ -1,6 +1,7 @@
 from interface.till.categories import (
     DEFAULT_CATEGORIES,
     DEFAULT_SUBCATEGORY_MAP,
+    format_display_name,
     get_subcategories_for_category,
     load_categories,
     load_category_config,
@@ -67,6 +68,16 @@ def test_category_resolution_helpers_are_case_insensitive(tmp_path):
     assert resolve_category_name(categories, "HOT DRINKS") == "Hot Drinks"
     assert get_subcategories_for_category(subcategory_map, "beer") == ["Draught", "Bottled"]
     assert resolve_subcategory_name(subcategory_map, "BEER", "draught") == "Draught"
+
+
+def test_format_display_name_title_cases_lowercase_labels():
+    assert format_display_name("beer") == "Beer"
+    assert format_display_name("hot drinks") == "Hot Drinks"
+
+
+def test_format_display_name_preserves_existing_casing():
+    assert format_display_name("Hot Drinks") == "Hot Drinks"
+    assert format_display_name("IPA") == "IPA"
 
 
 def test_invalid_category_file_falls_back_to_defaults(tmp_path):

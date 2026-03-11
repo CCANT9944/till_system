@@ -25,6 +25,15 @@ def names_match(left: str | None, right: str | None) -> bool:
     return name_key(left) == name_key(right)
 
 
+def format_display_name(value: str | None) -> str:
+    candidate = normalize_name(value)
+    if not candidate:
+        return ""
+    if candidate == candidate.lower():
+        return candidate.title()
+    return candidate
+
+
 def resolve_category_name(categories: list[str], category: str | None) -> str:
     candidate = normalize_name(category)
     if not candidate:

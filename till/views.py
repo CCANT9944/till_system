@@ -11,6 +11,7 @@ from .color_presets import get_preset_color_value, load_color_presets, save_colo
 from .color_preset_dialog import edit_color_presets_dialog
 from .categories import (
     category_requires_subcategory,
+    format_display_name,
     get_subcategories_for_category,
     load_category_config,
     names_match,
@@ -243,12 +244,12 @@ class MainWindow(QtWidgets.QMainWindow, BillsMixin, ProductDetailsMixin):
     def rebuild_category_buttons(self):
         self.category_buttons = rebuild_toggle_button_row(
             self.cat_layout,
-            [category.capitalize() for category in self.categories],
+            [format_display_name(category) for category in self.categories],
             self._handle_category_button,
         )
         sync_exclusive_button_row(
             self.category_buttons,
-            self.current_category.capitalize() if self.current_category else None,
+            format_display_name(self.current_category) if self.current_category else None,
         )
 
     def _handle_category_button(self, label: str, checked: bool) -> None:
@@ -398,7 +399,7 @@ class MainWindow(QtWidgets.QMainWindow, BillsMixin, ProductDetailsMixin):
             self.update_subcategories(None)
         sync_exclusive_button_row(
             self.category_buttons,
-            self.current_category.capitalize() if self.current_category else None,
+            format_display_name(self.current_category) if self.current_category else None,
         )
         self.refresh_products()
 
