@@ -423,9 +423,16 @@ class BillsMixin:
                 return
 
     def refresh_bills_shift_filter(self, selected_shift_id: int | None = None):
+        current_db_identity = id(self.inventory.db)
         open_shift = self.inventory.db.get_or_create_open_shift()
         if selected_shift_id is None:
-            selected_shift_id = self.bills_shift_filter.currentData() if self.bills_shift_filter.count() else open_shift.id
+            if (
+                self.bills_shift_filter.count()
+                and getattr(self, "_bills_shift_filter_db_identity", None) == current_db_identity
+            ):
+                selected_shift_id = self.bills_shift_filter.currentData()
+            else:
+                selected_shift_id = open_shift.id
         shifts = self.inventory.db.list_shifts(limit=100)
 
         self.bills_shift_filter.blockSignals(True)
@@ -449,6 +456,7 @@ class BillsMixin:
                 self.bills_shift_filter.setCurrentIndex(index)
                 break
         self.bills_shift_filter.blockSignals(False)
+        self._bills_shift_filter_db_identity = current_db_identity
 
     def close_current_day(self):
         if not self.check_pin():
