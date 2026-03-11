@@ -34,11 +34,14 @@ Simple point-of-sale application using PyQt6 and SQLite.
 3. Optional but recommended: copy `local_settings.example.json` to `local_settings.json` and change `manager_pin` so the manager PIN is stored only in your ignored local file.
 4. Run the application:
    ```bash
-   # from workspace root (recommended)
+   # from the standalone repository root
+   python -m till.main
+
+   # if this package lives inside a larger parent workspace
    python -m interface.till.main
 
-   # or, if you `cd` into the interface directory, run
-   cd interface\till
+   # or, if you `cd` into the till directory, run
+   cd till
    python main.py
    ```
 
