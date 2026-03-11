@@ -1,0 +1,14 @@
+venv/
+.venv/
+__pycache__/
+.pytest_cache/
+*.py[cod]
+
+# Local till runtime data
+till/till.db
+till/backups/
+
+# Local till UI configuration
+till/categories.json
+till/color_presets.json
+till/grid_layout.json
