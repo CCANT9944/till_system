@@ -18,6 +18,7 @@ Simple point-of-sale application using PyQt6 and SQLite.
 - `grid_reorder_dialog.py` – rearrange-grid dialog shell.
 - `grid_widgets.py` – reusable product-grid placement and drag/drop widgets.
 - `manager_dialog.py` – reusable manager section dialog UI.
+- `app_settings.py` – local manager-PIN loading from environment variables and ignored local config.
 - `product_dialogs.py` – add/edit product dialog helpers.
 - `views.py` – main till window and feature wiring for the PyQt6 GUI.
 - `main.py` – entry point for launching the application.
@@ -30,7 +31,8 @@ Simple point-of-sale application using PyQt6 and SQLite.
    ```
    pip install -r requirements.txt
    ```
-3. Run the application:
+3. Optional but recommended: copy `local_settings.example.json` to `local_settings.json` and change `manager_pin` so the manager PIN is stored only in your ignored local file.
+4. Run the application:
    ```bash
    # from workspace root (recommended)
    python -m interface.till.main
@@ -43,6 +45,9 @@ Simple point-of-sale application using PyQt6 and SQLite.
 > the `interface` folder is now a proper Python package (contains `__init__.py`), and
 > `main.py` will automatically insert the workspace root into `sys.path` so the
 > `interface.till` imports resolve correctly when invoked directly.
+
+> The manager PIN is loaded in this order: `TILL_MANAGER_PIN` environment variable,
+> ignored `local_settings.json`, then the tracked `local_settings.example.json` template.
 
 ## Features
 
@@ -88,6 +93,7 @@ pytest interface/till/tests
 ## Notes
 
 - Database file `till.db` is located inside the `till` package directory.
+- Local manager settings can be kept in `local_settings.json`, which is ignored by Git; the tracked `local_settings.example.json` file exists only as a template.
 - Timestamped backups are stored next to the live database under `interface/till/backups/manual/` for manual backups, `interface/till/backups/auto/` for automatic backups, and `interface/till/backups/restore-safety/` for the safety copy created before a restore overwrites live data.
 - Each backup file is a full snapshot of the whole till database at that moment in time, including products, saved bills, transaction items, payment methods, shift history, edited bill markers, and other stored till data.
 - Designed as a starting point; additional features can be added such as receipts,

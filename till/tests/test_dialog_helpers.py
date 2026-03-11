@@ -8,6 +8,7 @@ from interface.till.models import Product
 
 
 QtWidgets = None
+TEST_PIN = "2468"
 if importlib.util.find_spec("PyQt6") is not None:
     dialog_helpers = importlib.import_module("interface.till.dialog_helpers")
     grid_reorder_dialog = importlib.import_module("interface.till.grid_reorder_dialog")
@@ -48,10 +49,10 @@ def test_request_pin_returns_true_for_matching_pin(monkeypatch):
     monkeypatch.setattr(
         QtWidgets.QInputDialog,
         "getText",
-        staticmethod(lambda *args, **kwargs: ("0000", True)),
+        staticmethod(lambda *args, **kwargs: (TEST_PIN, True)),
     )
 
-    assert request_pin(None, "0000") is True
+    assert request_pin(None, TEST_PIN) is True
 
 
 def test_request_pin_warns_on_incorrect_pin(monkeypatch):
@@ -69,7 +70,7 @@ def test_request_pin_warns_on_incorrect_pin(monkeypatch):
         staticmethod(lambda _parent, title, message: called.update({"title": title, "message": message})),
     )
 
-    assert request_pin(None, "0000") is False
+    assert request_pin(None, TEST_PIN) is False
     assert called == {"title": "PIN", "message": "Incorrect PIN"}
 
 

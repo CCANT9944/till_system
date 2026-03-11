@@ -11,6 +11,7 @@ till/till.db
 till/backups/
 
 # Local till UI configuration
+till/local_settings.json
 till/categories.json
 till/color_presets.json
 till/grid_layout.json

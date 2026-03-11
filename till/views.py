@@ -2,6 +2,7 @@
 
 from PyQt6 import QtWidgets, QtCore, QtGui
 from .bills_mixin import BillsMixin
+from .app_settings import load_manager_pin
 from .controller import InventoryController, CartController
 from .db import close_db
 from .models import Product, Transaction
@@ -29,8 +30,6 @@ from .product_dialogs import prompt_edit_product, prompt_new_product
 
 # currency symbol used throughout UI
 CURRENCY = "£"
-# simple PIN for protected actions (in real app this should be configurable/secure)
-PIN_CODE = "0000"
 
 
 class MainWindow(QtWidgets.QMainWindow, BillsMixin, ProductDetailsMixin):
@@ -557,7 +556,15 @@ class MainWindow(QtWidgets.QMainWindow, BillsMixin, ProductDetailsMixin):
 
     def check_pin(self) -> bool:
         """Ask the user for the PIN, return True if correct."""
-        return request_pin(self, PIN_CODE)
+        manager_pin = load_manager_pin()
+        if not manager_pin:
+            QtWidgets.QMessageBox.warning(
+                self,
+                "PIN",
+                "No manager PIN is configured. Set TILL_MANAGER_PIN or create till/local_settings.json.",
+            )
+            return False
+        return request_pin(self, manager_pin)
 
     def adjust_selected_product_font(self, require_pin: bool = True):
         if require_pin and not self.check_pin():
