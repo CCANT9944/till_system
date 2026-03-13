@@ -277,6 +277,12 @@ def test_cart_panel_has_right_side_delimiter_and_bottom_actions(tmp_path):
     add_button_left = win.to_cart_button.mapTo(win.till_tab, QtCore.QPoint(0, 0)).x()
     add_button_top = win.to_cart_button.mapTo(win.till_tab, QtCore.QPoint(0, 0)).y()
     checkout_button_top = win.checkout_button.mapTo(win.till_tab, QtCore.QPoint(0, 0)).y()
+    manager_top = win.manager_button.mapTo(win, QtCore.QPoint(0, 0)).y()
+    manager_right = win.manager_button.mapTo(win, QtCore.QPoint(0, 0)).x() + win.manager_button.width()
+    tab_bar_top = win.main_tabs.tabBar().mapTo(win, QtCore.QPoint(0, 0)).y()
+    till_tab_size = win.main_tabs.tabBar().tabRect(0).size()
+    till_tab_top = win.till_tab.mapTo(win, QtCore.QPoint(0, 0)).y()
+    main_tabs_right = win.main_tabs.mapTo(win, QtCore.QPoint(0, 0)).x() + win.main_tabs.width()
 
     assert win.cart_panel.frameShape() == QtWidgets.QFrame.Shape.StyledPanel
     assert win.cart_delimiter.frameShape() == QtWidgets.QFrame.Shape.VLine
@@ -297,7 +303,11 @@ def test_cart_panel_has_right_side_delimiter_and_bottom_actions(tmp_path):
     assert win.checkout_button.y() > win.remove_button.y() + win.remove_button.height() - 1
     assert win.cart_button_panel.y() > win.cart_panel.y() + win.cart_panel.height() - 1
     assert checkout_button_top >= cart_button_panel_top
-    assert win.manager_button.mapTo(win.till_tab, QtCore.QPoint(0, 0)).x() < cart_button_panel_left
+    assert manager_top >= tab_bar_top
+    assert manager_top < till_tab_top
+    assert manager_right <= main_tabs_right
+    assert win.manager_button.width() == till_tab_size.width()
+    assert win.manager_button.height() == till_tab_size.height()
 
 
 def test_bills_panels_use_compact_widths(tmp_path):
@@ -394,8 +404,6 @@ def test_category_and_subcategory_buttons_are_compact_and_delimited(tmp_path):
         assert "font-size: 9pt" in style
         assert "border: 1px solid" in style
         assert "background-color" in style
-
-
 def test_category_without_subcategory_displays_items(tmp_path):
     try:
         from interface.till.views import MainWindow
@@ -517,6 +525,7 @@ def test_product_details_tab_lists_all_products_with_separate_category_columns(t
     inv = InventoryController(db=db)
     inv.add_product("Lager", 3.20, category="Beer", sub_category="Draught")
     inv.add_product("Tea", 1.50, category="Hot Drinks")
+    inv.add_product("Water", 1.00)
 
     win = MainWindow()
     win.inventory = inv
@@ -536,12 +545,13 @@ def test_product_details_tab_lists_all_products_with_separate_category_columns(t
     assert win.product_details_table.horizontalHeaderItem(1).text() == "Price"
     assert win.product_details_table.horizontalHeaderItem(2).text() == "Category"
     assert win.product_details_table.horizontalHeaderItem(3).text() == "Subcategory"
-    assert win.product_details_table.rowCount() == 2
-    assert win.product_details_count_label.text() == "2 products"
+    assert win.product_details_table.rowCount() == 3
+    assert win.product_details_count_label.text() == "3 products"
 
     rows_by_name = {row[0]: row for row in _table_rows(win.product_details_table)}
     assert rows_by_name["Lager"] == ["Lager", "£3.20", "Beer", "Draught"]
     assert rows_by_name["Tea"] == ["Tea", "£1.50", "Hot Drinks", ""]
+    assert rows_by_name["Water"] == ["Water", "£1.00", "Uncategorised", ""]
 
 
 def test_product_details_search_filters_table_without_affecting_till_grid(tmp_path):
@@ -556,6 +566,7 @@ def test_product_details_search_filters_table_without_affecting_till_grid(tmp_pa
     inv.add_product("Lager", 3.20, category="Beer", sub_category="Draught")
     inv.add_product("Ale", 3.40, category="Beer", sub_category="Bottled")
     inv.add_product("Tea", 1.50, category="Hot Drinks")
+    inv.add_product("Water", 1.00)
 
     win = MainWindow()
     win.inventory = inv
@@ -564,13 +575,13 @@ def test_product_details_search_filters_table_without_affecting_till_grid(tmp_pa
     win.refresh_products()
 
     assert win.product_layout.count() == 1
-    assert win.product_details_table.rowCount() == 3
+    assert win.product_details_table.rowCount() == 4
 
     win.product_details_search.setText("hot")
 
     rows = _table_rows(win.product_details_table)
     assert rows == [["Tea", "£1.50", "Hot Drinks", ""]]
-    assert win.product_details_count_label.text() == "Showing 1 of 3 products"
+    assert win.product_details_count_label.text() == "Showing 1 of 4 products"
     assert win.product_layout.count() == 1
     till_widget = win.product_layout.itemAt(0).widget()
     assert till_widget is not None
@@ -581,8 +592,17 @@ def test_product_details_search_filters_table_without_affecting_till_grid(tmp_pa
     assert rows == [["Ale", "£3.40", "Beer", "Bottled"]]
 
     win.product_details_search.clear()
-    assert win.product_details_table.rowCount() == 3
-    assert win.product_details_count_label.text() == "3 products"
+    index = win.product_details_category_filter.findText("Uncategorised")
+    assert index >= 0
+    win.product_details_category_filter.setCurrentIndex(index)
+
+    rows = _table_rows(win.product_details_table)
+    assert rows == [["Water", "£1.00", "Uncategorised", ""]]
+    assert win.product_details_count_label.text() == "Showing 1 of 4 products"
+
+    win.product_details_category_filter.setCurrentIndex(0)
+    assert win.product_details_table.rowCount() == 4
+    assert win.product_details_count_label.text() == "4 products"
 
 
 def test_product_details_layout_remains_usable_in_compact_mode(tmp_path):
@@ -601,6 +621,7 @@ def test_product_details_layout_remains_usable_in_compact_mode(tmp_path):
     win.refresh_products()
 
     assert win.product_details_search.minimumHeight() >= 40
+    assert win.product_details_category_filter.minimumHeight() >= 40
     assert win.product_details_add_button.minimumHeight() >= 40
     assert win.product_details_edit_button.minimumHeight() >= 40
     assert win.product_details_delete_button.minimumHeight() >= 40
@@ -673,6 +694,214 @@ def test_product_details_actions_refresh_table(tmp_path, monkeypatch):
     assert "Flat White" not in remaining_rows
     assert remaining_rows["Latte"] == ["Latte", "£3.75", "Hot Drinks", ""]
     assert win.product_details_table.rowCount() == 1
+
+
+def test_product_details_add_allows_blank_category(tmp_path, monkeypatch):
+    try:
+        from interface.till import views as views_module
+        from interface.till.views import MainWindow
+    except ImportError:
+        pytest.skip("PyQt6 not available")
+
+    db_file = tmp_path / "product_details_blank_category.db"
+    db = Database(path=db_file)
+    inv = InventoryController(db=db)
+    inv.add_product("Coffee", 2.50, category="Hot Drinks")
+
+    win = MainWindow()
+    win.inventory = inv
+    win.check_pin = lambda: True
+    win.refresh_products()
+
+    call_kwargs = {}
+
+    def fake_prompt_new_product(*args, **kwargs):
+        call_kwargs.update(kwargs)
+        return Product(
+            name="Water",
+            price=1.25,
+            category="",
+            sub_category="",
+        )
+
+    monkeypatch.setattr(views_module, "prompt_new_product", fake_prompt_new_product)
+
+    win.product_details_add_button.click()
+
+    assert call_kwargs.get("allow_empty_category") is True
+    added_rows = {row[0]: row for row in _table_rows(win.product_details_table)}
+    assert added_rows["Water"] == ["Water", "£1.25", "Uncategorised", ""]
+    assert "Uncategorised" not in win.category_buttons
+
+    stored = next(product for product in inv.list_products() if product.name == "Water")
+    assert stored.category == ""
+    assert stored.sub_category == ""
+
+
+def test_product_details_edit_can_move_product_to_uncategorised(tmp_path, monkeypatch):
+    try:
+        from interface.till import views as views_module
+        from interface.till.views import MainWindow
+    except ImportError:
+        pytest.skip("PyQt6 not available")
+
+    db_file = tmp_path / "product_details_edit_uncategorised.db"
+    db = Database(path=db_file)
+    inv = InventoryController(db=db)
+    inv.add_product("Tea", 1.50, category="Hot Drinks")
+
+    win = MainWindow()
+    win.inventory = inv
+    win.check_pin = lambda: True
+    win.current_category = "Hot Drinks"
+    win.refresh_products()
+
+    _select_product_details_row(win, "Tea")
+
+    call_kwargs = {}
+
+    def fake_prompt_edit_product(*args, **kwargs):
+        call_kwargs.update(kwargs)
+        return Product(
+            name="Tea",
+            price=1.50,
+            category="",
+            sub_category="",
+        )
+
+    monkeypatch.setattr(views_module, "prompt_edit_product", fake_prompt_edit_product)
+
+    win.product_details_edit_button.click()
+
+    assert call_kwargs.get("allow_empty_category") is True
+    assert win.product_layout.count() == 0
+    assert not win.get_visible_products()
+
+    index = win.product_details_category_filter.findText("Uncategorised")
+    assert index >= 0
+    win.product_details_category_filter.setCurrentIndex(index)
+
+    rows = _table_rows(win.product_details_table)
+    assert rows == [["Tea", "£1.50", "Uncategorised", ""]]
+
+    stored = next(product for product in inv.list_products() if product.name == "Tea")
+    assert stored.category == ""
+    assert stored.sub_category == ""
+
+
+def test_manager_dialog_exposes_database_inspector_action(tmp_path, monkeypatch):
+    try:
+        from interface.till import views as views_module
+        from interface.till.views import MainWindow
+    except ImportError:
+        pytest.skip("PyQt6 not available")
+
+    db_file = tmp_path / "manager_actions.db"
+    db = Database(path=db_file)
+    inv = InventoryController(db=db)
+    inv.add_product("Coffee", 2.50, category="Hot Drinks")
+
+    win = MainWindow()
+    win.inventory = inv
+    win.check_pin = lambda: True
+
+    captured = {}
+    opened = []
+
+    monkeypatch.setattr(
+        views_module,
+        "show_manager_dialog",
+        lambda parent, product_actions, design_actions: captured.update(
+            product_actions=product_actions,
+            design_actions=design_actions,
+        ),
+    )
+    monkeypatch.setattr(win, "open_database_inspector", lambda require_pin=True: opened.append(require_pin))
+
+    win.open_manager_dialog()
+
+    assert "Database Inspector" in captured["product_actions"]
+    captured["product_actions"]["Database Inspector"]()
+    assert opened == [False]
+
+
+def test_database_inspector_dialog_shows_live_database_snapshot(tmp_path):
+    try:
+        from interface.till.database_inspector_dialog import build_database_inspector_dialog
+    except ImportError:
+        pytest.skip("PyQt6 not available")
+
+    db_file = tmp_path / "database_inspector.db"
+    db = Database(path=db_file)
+    inv = InventoryController(db=db)
+    tea = inv.add_product("Tea", 2.00, category="Hot Drinks")
+    cake = inv.add_product("Cake", 4.00, category="Snacks")
+
+    first_cart = CartController(db=db)
+    first_cart.add_item(tea)
+    first_cart.checkout(payment_method="Cash")
+    _, open_shift = db.close_current_shift()
+
+    second_cart = CartController(db=db)
+    second_cart.add_item(tea)
+    second_cart.add_item(cake)
+    second_txn = second_cart.checkout(payment_method="Visa")
+    db.update_transaction(
+        Transaction(
+            id=second_txn.id,
+            payment_method="Mastercard",
+            timestamp=datetime.datetime(2026, 3, 11, 18, 45, 0),
+            items=[
+                TransactionItem(
+                    product_id=tea.id,
+                    product_name="Tea",
+                    unit_price=2.00,
+                    quantity=1,
+                    category="Hot Drinks",
+                    sub_category="",
+                )
+            ],
+        )
+    )
+
+    dialog = build_database_inspector_dialog(None, db)
+
+    assert dialog.database_path_value.text().endswith("database_inspector.db")
+    assert dialog.product_count_value.text() == "2"
+    assert dialog.transaction_count_value.text() == "2"
+    assert dialog.shift_count_value.text() == "2"
+    assert dialog.open_shift_value.text() == f"#{open_shift.id}"
+    assert dialog.backup_count_value.text() == "0"
+    assert dialog.audit_count_value.text() == "1"
+    assert dialog.products_table.rowCount() == 2
+    assert dialog.transactions_table.rowCount() == 2
+    assert dialog.transaction_items_table.rowCount() == 2
+    assert dialog.shifts_table.rowCount() == 2
+    assert dialog.audit_table.rowCount() == 1
+
+    transaction_rows = {row[0]: row for row in _table_rows(dialog.transactions_table)}
+    assert transaction_rows[str(second_txn.id)][3] == "Mastercard"
+    assert transaction_rows[str(second_txn.id)][4] == "£2.00"
+
+    transaction_item_rows = [row for row in _table_rows(dialog.transaction_items_table) if row[0] == str(second_txn.id)]
+    assert len(transaction_item_rows) == 1
+    assert transaction_item_rows[0][2] == str(open_shift.id)
+    assert transaction_item_rows[0][4] == "Tea"
+    assert transaction_item_rows[0][7] == "£2.00"
+    assert transaction_item_rows[0][8] == "1"
+    assert transaction_item_rows[0][9] == "£2.00"
+
+    audit_rows = _table_rows(dialog.audit_table)
+    assert audit_rows[0][0] == str(second_txn.id)
+    assert audit_rows[0][1] == str(open_shift.id)
+    assert audit_rows[0][3] == "#1"
+    assert "Visa" in audit_rows[0][4]
+    assert "Mastercard" in audit_rows[0][5]
+    assert "Removed: Cake x1 @ £4.00 = £4.00" in audit_rows[0][6]
+
+    shift_rows = _table_rows(dialog.shifts_table)
+    assert shift_rows[0][0] == str(open_shift.id)
+    assert shift_rows[0][1] == "Open"
 
 
 def test_cart_add_and_checkout(tmp_path, monkeypatch):
@@ -780,6 +1009,16 @@ def test_update_transaction_changes_saved_bill_and_shift_summary(tmp_path):
     assert summary["card_total"] == pytest.approx(9.0)
     assert summary["visa_total"] == pytest.approx(9.0)
     assert summary["total"] == pytest.approx(9.0)
+
+    revisions = db.list_transaction_revisions(txn.id)
+    assert len(revisions) == 1
+    assert revisions[0].transaction_id == txn.id
+    assert revisions[0].payment_method == "Cash"
+    assert revisions[0].timestamp == txn.timestamp
+    assert revisions[0].edited_at is None
+    assert [item.product_name for item in revisions[0].items] == ["Coffee"]
+    assert revisions[0].items[0].quantity == 2
+    assert revisions[0].items[0].unit_price == pytest.approx(2.50)
 
 
 def test_timestamped_backups_rotate_old_files(tmp_path):
@@ -912,6 +1151,72 @@ def test_update_transaction_rolls_back_when_item_insert_fails(tmp_path):
     summary = db.get_shift_summary(stored.shift_id)
     assert summary["cash_total"] == pytest.approx(original.total)
     assert summary["card_total"] == pytest.approx(0.0)
+    assert db.list_transaction_revisions(txn.id) == []
+
+
+def test_update_transaction_keeps_multiple_saved_revisions(tmp_path):
+    db_file = tmp_path / "edit_bill_revisions.db"
+    db = Database(path=db_file)
+    inv = InventoryController(db=db)
+    coffee = inv.add_product("Coffee", 2.50, category="Hot Drinks")
+    cake = inv.add_product("Cake", 4.00, category="Snacks")
+
+    cart = CartController(db=db)
+    cart.add_item(coffee)
+    cart.add_item(cake)
+    txn = cart.checkout(payment_method="Cash")
+
+    first_edit_time = datetime.datetime(2026, 3, 10, 15, 0, 0)
+    db.update_transaction(
+        Transaction(
+            id=txn.id,
+            payment_method="Visa",
+            timestamp=first_edit_time,
+            items=[
+                TransactionItem(
+                    product_id=coffee.id,
+                    product_name="Coffee",
+                    unit_price=2.50,
+                    quantity=2,
+                    category="Hot Drinks",
+                    sub_category="",
+                )
+            ],
+        )
+    )
+
+    second_edit_time = datetime.datetime(2026, 3, 10, 16, 30, 0)
+    db.update_transaction(
+        Transaction(
+            id=txn.id,
+            payment_method="Mastercard",
+            timestamp=second_edit_time,
+            items=[
+                TransactionItem(
+                    product_id=coffee.id,
+                    product_name="Mocha",
+                    unit_price=4.50,
+                    quantity=1,
+                    category="Hot Drinks",
+                    sub_category="",
+                )
+            ],
+        )
+    )
+
+    revisions = db.list_transaction_revisions(txn.id)
+    assert len(revisions) == 2
+
+    original_revision, first_saved_revision = revisions
+    assert original_revision.payment_method == "Cash"
+    assert [item.product_name for item in original_revision.items] == ["Coffee", "Cake"]
+    assert original_revision.edited_at is None
+
+    assert first_saved_revision.payment_method == "Visa"
+    assert first_saved_revision.timestamp == first_edit_time
+    assert first_saved_revision.edited_at is not None
+    assert [item.product_name for item in first_saved_revision.items] == ["Coffee"]
+    assert first_saved_revision.items[0].quantity == 2
 
 
 def test_close_current_shift_rolls_back_when_new_shift_creation_fails(tmp_path, monkeypatch):
@@ -1148,6 +1453,7 @@ def test_bills_list_refreshes_after_checkout(tmp_path):
     assert win.bill_status_badge.isHidden()
     assert "coffee" in win.bill_detail.toPlainText().lower()
     assert "total: £5.00".lower() in win.bill_detail.toPlainText().lower()
+    assert win.bill_audit_group.isHidden()
     assert len(db.backups.list_backups()) == 1
 
 
@@ -1328,10 +1634,12 @@ def test_edit_bill_refreshes_history_details_and_reports(tmp_path, monkeypatch):
     db_file = tmp_path / "edit_bill_ui.db"
     db = Database(path=db_file)
     inv = InventoryController(db=db)
-    prod = inv.add_product("Coffee", 2.50, category="Hot Drinks")
+    coffee = inv.add_product("Coffee", 2.50, category="Hot Drinks")
+    cake = inv.add_product("Cake", 4.00, category="Snacks")
 
     cart = CartController(db=db)
-    cart.add_item(prod, quantity=2)
+    cart.add_item(coffee, quantity=2)
+    cart.add_item(cake)
     txn = cart.checkout(payment_method="Cash")
 
     win = MainWindow()
@@ -1349,7 +1657,7 @@ def test_edit_bill_refreshes_history_details_and_reports(tmp_path, monkeypatch):
             timestamp=datetime.datetime(2026, 3, 10, 21, 5, 0),
             items=[
                 TransactionItem(
-                    product_id=prod.id,
+                    product_id=coffee.id,
                     product_name="Mocha",
                     unit_price=4.50,
                     quantity=1,
@@ -1373,6 +1681,15 @@ def test_edit_bill_refreshes_history_details_and_reports(tmp_path, monkeypatch):
     assert "mocha" in win.bill_detail.toPlainText().lower()
     assert "2026-03-10 21:05:00" in win.bill_detail.toPlainText()
     assert "total: £4.50" in win.bill_detail.toPlainText().lower()
+    assert "saved edits" not in win.bill_detail.toPlainText().lower()
+    assert not win.bill_audit_group.isHidden()
+    assert "saved edits" in win.bill_audit_detail.toPlainText().lower()
+    assert "payment: cash -> mastercard" in win.bill_audit_detail.toPlainText().lower()
+    assert "removed: cake x1 @ £4.00 = £4.00".lower() in win.bill_audit_detail.toPlainText().lower()
+    assert "changed (name, qty, price): coffee x2 @ £2.50 = £5.00 -> mocha x1 @ £4.50 = £4.50".lower() in win.bill_audit_detail.toPlainText().lower()
+    detail_html = win.format_bill_audit_html(db.get_transaction(txn.id))
+    assert "removed: cake x1 @ £4.00 = £4.00".lower() in detail_html.lower()
+    assert "background-color: #6a2424" in detail_html.lower()
     assert win.bills_cash_label.text() == "£0.00"
     assert win.bills_card_label.text() == "£4.50"
     assert win.bills_mastercard_label.text() == "£4.50"
@@ -1442,6 +1759,70 @@ def test_edited_bill_remains_highlighted_after_reloading_history(tmp_path, monke
     assert item.data(QtCore.Qt.ItemDataRole.UserRole) == txn.id
     assert item.background().color().name() == "#5a4321"
     assert item.toolTip().startswith("Edited bill at ")
+    assert not win.bill_audit_group.isHidden()
+    assert "saved edits" in win.bill_audit_detail.toPlainText().lower()
+
+
+def test_saved_edits_section_can_collapse_and_expand(tmp_path, monkeypatch):
+    try:
+        from interface.till import bills_mixin as bills_module
+        from interface.till.views import MainWindow
+    except ImportError:
+        pytest.skip("PyQt6 not available")
+
+    db_file = tmp_path / "edit_bill_collapse.db"
+    db = Database(path=db_file)
+    inv = InventoryController(db=db)
+    coffee = inv.add_product("Coffee", 2.50, category="Hot Drinks")
+    cake = inv.add_product("Cake", 4.00, category="Snacks")
+
+    cart = CartController(db=db)
+    cart.add_item(coffee)
+    cart.add_item(cake)
+    txn = cart.checkout(payment_method="Cash")
+
+    win = MainWindow()
+    win.inventory = inv
+    win.cart = CartController(db=db)
+    win.check_pin = lambda: True
+    win.refresh_bills()
+
+    monkeypatch.setattr(
+        bills_module,
+        "prompt_edit_bill",
+        lambda parent, transaction: Transaction(
+            id=transaction.id,
+            payment_method="Visa",
+            timestamp=transaction.timestamp,
+            items=[
+                TransactionItem(
+                    product_id=coffee.id,
+                    product_name="Coffee",
+                    unit_price=2.50,
+                    quantity=1,
+                    category="Hot Drinks",
+                    sub_category="",
+                )
+            ],
+        ),
+    )
+
+    win.edit_selected_bill()
+
+    assert not win.bill_audit_group.isHidden()
+    assert not win.bill_audit_content.isHidden()
+    assert win.bill_audit_toggle.arrowType() == QtCore.Qt.ArrowType.DownArrow
+
+    win.bill_audit_toggle.click()
+
+    assert win.bill_audit_content.isHidden()
+    assert win.bill_audit_toggle.arrowType() == QtCore.Qt.ArrowType.RightArrow
+
+    win.bill_audit_toggle.click()
+
+    assert not win.bill_audit_content.isHidden()
+    assert win.bill_audit_toggle.arrowType() == QtCore.Qt.ArrowType.DownArrow
+    assert "removed: cake x1 @ £4.00 = £4.00".lower() in win.bill_audit_detail.toPlainText().lower()
 
 
 def test_main_window_close_releases_assigned_database(tmp_path):

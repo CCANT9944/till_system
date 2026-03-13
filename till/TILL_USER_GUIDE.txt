@@ -1,0 +1,215 @@
+TILL SYSTEM USER GUIDE
+Last updated: 2026-03-13
+
+Purpose
+- This file is the plain-text operating guide for the Till app.
+- Keep this file updated whenever user-facing workflows, tabs, manager tools, or reports change.
+
+Location
+- App folder: interface/till
+- Main entry point: interface/till/main.py
+- Database file: interface/till/till.db
+
+Basic Requirements
+- Python 3.10 or newer
+- PyQt6 installed
+- Local write access to the till folder so the app can save the database and backups
+
+How To Start The Program
+1. Open a terminal in the interface folder or in the till folder.
+2. Install dependencies if needed:
+   pip install -r requirements.txt
+3. Run one of these commands:
+   python -m interface.till.main
+   or
+   cd till
+   python main.py
+
+Manager PIN
+- The manager PIN is loaded in this order:
+  1. TILL_MANAGER_PIN environment variable
+  2. local_settings.json
+  3. local_settings.example.json
+- Manager actions require the correct PIN.
+
+Main Tabs
+- Till
+- Bills
+- Product Details
+- Reports
+- The Manager button sits in the top-right corner of the main tab strip.
+
+TILL TAB
+
+Purpose
+- Use this tab for normal sales and checkout.
+
+How Products Are Shown
+- Products are shown as square buttons in a grid.
+- You normally choose a category first.
+- Some categories also require a subcategory before products appear.
+- If no category is selected, the grid shows a placeholder message.
+- Products without a category stay hidden from the Till tab until they are categorised.
+
+How To Sell Items
+1. Select a category.
+2. Select a subcategory if the category needs one.
+3. Tap or click a product tile.
+4. Press Add to cart.
+5. Review the cart on the right side.
+6. Use Remove from cart if needed.
+7. Press Checkout.
+8. Choose a payment method: Cash, Visa, Mastercard, or Amex.
+
+Checkout Result
+- A receipt dialog is shown after checkout.
+- The bill is stored in history.
+- Reports are refreshed.
+- An automatic backup is created.
+
+Manager Actions In Till Tab
+- Add Product
+- Edit Product
+- Delete Product
+- Edit Categories
+- Database Inspector
+- Color Presets
+- Adjust Product Font
+- Grid Layout
+- Rearrange Grid Items
+
+PRODUCT DETAILS TAB
+
+Purpose
+- Use this tab to browse and manage the full product catalog without changing the Till tab filter state.
+
+What You Can Do Here
+- Search products by name, price, category, or subcategory
+- Filter the table by category
+- Add a product directly from this tab
+- Edit the selected product
+- Delete the selected product
+
+Category Filter Behavior
+- The dropdown includes:
+  All categories
+  Any configured category
+  Uncategorised
+- Products with no category are shown as Uncategorised in the table.
+
+Add Product From Product Details
+- The Add button here allows category and subcategory to be left blank.
+- This is useful when you want to create the product first and sort it later.
+- Blank-category products remain visible in Product Details through the Uncategorised filter, but stay hidden from the Till tab until they are categorised.
+
+Edit Product To Uncategorised
+- The Edit button in Product Details can also set a product back to a blank category.
+- Use this when you want to remove a product from the Till tab without deleting it.
+- After that change, the product stays available only in Product Details under the Uncategorised filter until you categorise it again.
+
+Important Difference
+- Add Product from Product Details is flexible.
+- Add Product from the Manager flow is still the stricter category-first path.
+
+BILLS TAB
+
+Purpose
+- Use this tab to review completed bills, edit saved bills, inspect shift totals, create backups, and restore backups.
+
+What You Can Do Here
+- Review recent transactions
+- Reprint a saved receipt
+- Edit a saved bill
+- Close the current day or shift
+- Open the end-of-day report
+- Create a manual backup
+- Restore a previous backup
+
+Saved Bill Editing
+- Saved bills can be edited after checkout.
+- You can correct item rows, payment method, and timestamp.
+- Added items can be inserted by product search.
+- Edited bills stay highlighted in history.
+
+Saved Edits Section
+- Bill details are split into two areas:
+  1. Final bill or receipt view
+  2. Saved edits history
+- The Saved edits section is collapsible.
+- Removed items remain visible there after the bill is saved.
+
+Audit History Behavior
+- Each saved edit stores the previous version before the new version is written.
+- The audit trail shows added, changed, and removed lines.
+- This history is persistent and survives app restarts.
+
+Shift Handling
+- Transactions belong to shifts.
+- Close Day closes the current shift and starts a new one.
+- Bills can be filtered by shift.
+
+Backups
+- Manual backup is available from Bills.
+- Restore creates a safety backup before overwriting live data.
+- Checkout and Close Day also create automatic backups.
+
+REPORTS TAB
+
+Purpose
+- Use this tab to review sales summaries by item and by selected sessions or date ranges.
+
+What Reports Show
+- Product name
+- Category
+- Subcategory
+- Quantity sold
+- Revenue
+- Transaction count
+
+Report Behavior
+- Reports default to the current open session if no manual filter is selected.
+- Reports refresh after checkout, bill edits, restore, and day close.
+
+DATABASE INSPECTOR
+
+Purpose
+- Manager-only read-only inspection tool for the live database.
+
+What It Shows
+- Overview counts
+- Products
+- Transactions
+- Transaction Items
+- Shifts
+- Audit
+
+Audit Tab
+- The Audit tab shows saved bill revision snapshots.
+- Use it when you want to scan edited bills across the database without opening them one by one.
+
+WHEN TO USE WHICH SCREEN
+
+Use Till when:
+- You are making sales.
+
+Use Product Details when:
+- You need to browse or manage products across all categories.
+- You want to add a product without changing the Till tab filter.
+- You want to find uncategorised products quickly.
+
+Use Bills when:
+- You want to inspect one transaction in detail.
+- You want to edit a saved bill.
+- You want to review the saved edits for that specific bill.
+
+Use Database Inspector when:
+- You want an admin overview of the database.
+- You want to inspect audit history across many edited bills.
+
+FILES TO KEEP UPDATED IN FUTURE
+- This file: TILL_USER_GUIDE.txt
+- README.md for high-level project documentation
+
+Suggested Update Rule
+- If a future change affects how a cashier, manager, or admin uses the program, update this file.
+- If a future change affects setup, architecture, or feature summary, update README.md too.

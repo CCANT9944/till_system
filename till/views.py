@@ -12,8 +12,11 @@ from .color_presets import get_preset_color_value, load_color_presets, save_colo
 from .color_preset_dialog import edit_color_presets_dialog
 from .categories import (
     category_requires_subcategory,
+    UNCATEGORIZED_FILTER,
     format_display_name,
+    format_category_filter_label,
     get_subcategories_for_category,
+    is_uncategorized_filter,
     load_category_config,
     names_match,
     resolve_category_name,
@@ -23,6 +26,7 @@ from .categories import (
 from .category_editor_dialog import edit_categories_dialog
 from .grid_layout import GRID_LAYOUT_PRESETS, load_grid_layout, save_grid_layout
 from .button_rows import clear_layout_widgets, rebuild_toggle_button_row, sync_exclusive_button_row
+from .database_inspector_dialog import show_database_inspector_dialog
 from .dialog_helpers import choose_grid_layout_dialog, choose_product_dialog, request_pin
 from .grid_reorder_dialog import show_grid_reorder_dialog
 from .grid_widgets import PRODUCT_TILE_SIZE, resolve_product_grid_positions
@@ -64,6 +68,32 @@ class MainWindow(QtWidgets.QMainWindow, BillsMixin, ProductDetailsMixin, Reports
             "QPushButton:hover { background-color: #2f2f2f; }"
             "QPushButton:checked { background-color: #3f6b3f; border-color: #80b780; color: white; }"
         )
+        self.compact_button_style = (
+            "QPushButton {"
+            " font-size: 10pt;"
+            " min-height: 32px;"
+            " padding: 3px 8px;"
+            " border: 1px solid #5a5a5a;"
+            " border-radius: 4px;"
+            " background-color: #2b2b2b;"
+            " }"
+            "QPushButton:hover { background-color: #343434; }"
+            "QPushButton:pressed { background-color: #252525; }"
+        )
+        self.tab_header_button_style = (
+            "QPushButton {"
+            " min-width: 132px;"
+            " min-height: 44px;"
+            " font-size: 11pt;"
+            " padding: 6px 14px;"
+            " border: 1px solid #666666;"
+            " border-radius: 4px;"
+            " background-color: #242424;"
+            " color: #f2f2f2;"
+            " }"
+            "QPushButton:hover { background-color: #2f2f2f; }"
+            "QPushButton:pressed { background-color: #222222; }"
+        )
 
         self.inventory = InventoryController()
         self.cart = CartController(db=self.inventory.db)
@@ -75,6 +105,21 @@ class MainWindow(QtWidgets.QMainWindow, BillsMixin, ProductDetailsMixin, Reports
         central.setLayout(root_layout)
         self.main_tabs = QtWidgets.QTabWidget()
         root_layout.addWidget(self.main_tabs)
+
+        self.manager_button = QtWidgets.QPushButton("Manager")
+        self.manager_button.clicked.connect(self.open_manager_dialog)
+        self.manager_button.setStyleSheet(self.tab_header_button_style)
+        self.manager_button.setFixedSize(132, 44)
+        self.manager_button.setSizePolicy(
+            QtWidgets.QSizePolicy.Policy.Fixed,
+            QtWidgets.QSizePolicy.Policy.Fixed,
+        )
+        manager_corner_widget = QtWidgets.QWidget()
+        manager_corner_layout = QtWidgets.QHBoxLayout(manager_corner_widget)
+        manager_corner_layout.setContentsMargins(0, 0, 0, 0)
+        manager_corner_layout.setSpacing(0)
+        manager_corner_layout.addWidget(self.manager_button)
+        self.main_tabs.setCornerWidget(manager_corner_widget, QtCore.Qt.Corner.TopRightCorner)
 
         self.till_tab = QtWidgets.QWidget()
         layout = QtWidgets.QVBoxLayout()
@@ -91,6 +136,7 @@ class MainWindow(QtWidgets.QMainWindow, BillsMixin, ProductDetailsMixin, Reports
 
         self.reports_tab = QtWidgets.QWidget()
         self.main_tabs.addTab(self.reports_tab, "Reports")
+        self.sync_manager_button_size_to_tabs()
 
         # category selector buttons
         self.categories, self.subcategory_map = load_category_config()
@@ -221,38 +267,8 @@ class MainWindow(QtWidgets.QMainWindow, BillsMixin, ProductDetailsMixin, Reports
         right_layout.addWidget(self.cart_panel, 1)
         content_layout.addWidget(self.cart_column, 0)
 
-        button_layout = QtWidgets.QHBoxLayout()
-        button_layout.setContentsMargins(0, 0, 0, 0)
-        button_layout.setSpacing(6)
-        layout.addLayout(button_layout)
-
-        compact_button_style = (
-            "QPushButton {"
-            " font-size: 10pt;"
-            " min-height: 32px;"
-            " padding: 3px 8px;"
-            " border: 1px solid #5a5a5a;"
-            " border-radius: 4px;"
-            " background-color: #2b2b2b;"
-            " }"
-            "QPushButton:hover { background-color: #343434; }"
-            "QPushButton:pressed { background-color: #252525; }"
-        )
-
-        left_button_layout = QtWidgets.QHBoxLayout()
-        left_button_layout.setContentsMargins(0, 0, 0, 0)
-        left_button_layout.setSpacing(8)
-        button_layout.addLayout(left_button_layout, 1)
-
-        self.manager_button = QtWidgets.QPushButton("Manager")
-        self.manager_button.clicked.connect(self.open_manager_dialog)
-        self.manager_button.setStyleSheet(compact_button_style)
-        left_button_layout.addWidget(self.manager_button)
-
         self.to_cart_button = QtWidgets.QPushButton("Add to cart")
         self.to_cart_button.clicked.connect(self.add_selected_to_cart)
-
-        left_button_layout.addStretch()
 
         self.cart_button_panel = QtWidgets.QWidget()
         self.cart_button_panel.setSizePolicy(
@@ -267,7 +283,7 @@ class MainWindow(QtWidgets.QMainWindow, BillsMixin, ProductDetailsMixin, Reports
         self.cart_button_panel.setLayout(cart_button_layout)
         right_layout.addWidget(self.cart_button_panel, 0)
 
-        self.to_cart_button.setStyleSheet(compact_button_style)
+        self.to_cart_button.setStyleSheet(self.compact_button_style)
         self.to_cart_button.setSizePolicy(
             QtWidgets.QSizePolicy.Policy.Expanding,
             QtWidgets.QSizePolicy.Policy.Fixed,
@@ -276,7 +292,7 @@ class MainWindow(QtWidgets.QMainWindow, BillsMixin, ProductDetailsMixin, Reports
 
         self.remove_button = QtWidgets.QPushButton("Remove from cart")
         self.remove_button.clicked.connect(self.remove_selected_from_cart)
-        self.remove_button.setStyleSheet(compact_button_style)
+        self.remove_button.setStyleSheet(self.compact_button_style)
         self.remove_button.setSizePolicy(
             QtWidgets.QSizePolicy.Policy.Expanding,
             QtWidgets.QSizePolicy.Policy.Fixed,
@@ -285,14 +301,12 @@ class MainWindow(QtWidgets.QMainWindow, BillsMixin, ProductDetailsMixin, Reports
 
         self.checkout_button = QtWidgets.QPushButton("Checkout")
         self.checkout_button.clicked.connect(self.perform_checkout)
-        self.checkout_button.setStyleSheet(compact_button_style)
+        self.checkout_button.setStyleSheet(self.compact_button_style)
         self.checkout_button.setSizePolicy(
             QtWidgets.QSizePolicy.Policy.Expanding,
             QtWidgets.QSizePolicy.Policy.Fixed,
         )
         cart_button_layout.addWidget(self.checkout_button)
-
-        button_layout.addStretch()
 
         self.build_bills_tab()
         self.build_product_details_tab()
@@ -303,6 +317,24 @@ class MainWindow(QtWidgets.QMainWindow, BillsMixin, ProductDetailsMixin, Reports
         self.refresh_products()
         self.refresh_bills()
         self.refresh_reports()
+
+    def sync_manager_button_size_to_tabs(self) -> None:
+        tab_bar = self.main_tabs.tabBar()
+        if tab_bar.count() <= 0:
+            return
+        tab_size = tab_bar.tabRect(0).size()
+        if not tab_size.isValid() or tab_size.width() <= 0 or tab_size.height() <= 0:
+            tab_size = tab_bar.tabSizeHint(0)
+        if tab_size.isValid():
+            self.manager_button.setFixedSize(tab_size)
+
+    def showEvent(self, event: QtGui.QShowEvent) -> None:
+        self.sync_manager_button_size_to_tabs()
+        super().showEvent(event)
+
+    def resizeEvent(self, event: QtGui.QResizeEvent) -> None:
+        self.sync_manager_button_size_to_tabs()
+        super().resizeEvent(event)
 
     def apply_grid_layout_settings(self):
         self.products_per_row = self.grid_columns
@@ -326,6 +358,7 @@ class MainWindow(QtWidgets.QMainWindow, BillsMixin, ProductDetailsMixin, Reports
         self.product_container.updateGeometry()
 
     def refresh_products(self):
+        self.rebuild_category_buttons()
         self.refresh_product_details()
         # clear existing widgets and mappings
         clear_layout_widgets(self.product_layout)
@@ -395,20 +428,29 @@ class MainWindow(QtWidgets.QMainWindow, BillsMixin, ProductDetailsMixin, Reports
         )
 
     def rebuild_category_buttons(self):
+        labels = [format_display_name(category) for category in self.categories]
         self.category_buttons = rebuild_toggle_button_row(
             self.cat_layout,
-            [format_display_name(category) for category in self.categories],
+            labels,
             self._handle_category_button,
         )
         self.apply_filter_button_style(self.category_buttons)
         sync_exclusive_button_row(
             self.category_buttons,
-            format_display_name(self.current_category) if self.current_category else None,
+            self.get_current_category_button_label(),
         )
 
     def _handle_category_button(self, label: str, checked: bool) -> None:
+        if is_uncategorized_filter(label):
+            self.select_category(UNCATEGORIZED_FILTER, checked)
+            return
         category = resolve_category_name(self.categories, label)
         self.select_category(category, checked)
+
+    def get_current_category_button_label(self) -> str | None:
+        if not self.current_category:
+            return None
+        return format_category_filter_label(self.current_category)
 
     def refresh_cart(self):
         self.cart_list.clear()
@@ -493,8 +535,14 @@ class MainWindow(QtWidgets.QMainWindow, BillsMixin, ProductDetailsMixin, Reports
             return None
         return next((product for product in self.inventory.list_products() if product.id == product_id), None)
 
-    def edit_product(self, product: Product) -> bool:
-        result = prompt_edit_product(self, product, self.categories, self.subcategory_map)
+    def edit_product(self, product: Product, allow_empty_category: bool = False) -> bool:
+        result = prompt_edit_product(
+            self,
+            product,
+            self.categories,
+            self.subcategory_map,
+            allow_empty_category=allow_empty_category,
+        )
         if result is None:
             return False
         category = resolve_category_name(self.categories, result.category)
@@ -522,10 +570,15 @@ class MainWindow(QtWidgets.QMainWindow, BillsMixin, ProductDetailsMixin, Reports
         return True
 
 
-    def add_product_dialog(self, require_pin: bool = True):
+    def add_product_dialog(self, require_pin: bool = True, allow_empty_category: bool = False):
         if require_pin and not self.check_pin():
             return
-        result = prompt_new_product(self, self.categories, self.subcategory_map)
+        result = prompt_new_product(
+            self,
+            self.categories,
+            self.subcategory_map,
+            allow_empty_category=allow_empty_category,
+        )
         if result is None:
             return
         category = resolve_category_name(self.categories, result.category)
@@ -544,20 +597,25 @@ class MainWindow(QtWidgets.QMainWindow, BillsMixin, ProductDetailsMixin, Reports
     def select_category(self, category: str, checked: bool):
         # toggle category filter and update subcategories
         if checked:
-            self.current_category = resolve_category_name(self.categories, category)
+            if is_uncategorized_filter(category):
+                self.current_category = UNCATEGORIZED_FILTER
+            else:
+                self.current_category = resolve_category_name(self.categories, category)
             self.current_subcategory = None
-            self.update_subcategories(self.current_category)
+            self.update_subcategories(None if is_uncategorized_filter(self.current_category) else self.current_category)
         else:
             self.current_category = None
             self.current_subcategory = None
             self.update_subcategories(None)
         sync_exclusive_button_row(
             self.category_buttons,
-            format_display_name(self.current_category) if self.current_category else None,
+            self.get_current_category_button_label(),
         )
         self.refresh_products()
 
     def update_subcategories(self, category: str | None):
+        if is_uncategorized_filter(category):
+            category = None
         category = resolve_category_name(self.categories, category)
         subcategories = get_subcategories_for_category(self.subcategory_map, category)
         if category and subcategories:
@@ -681,13 +739,18 @@ class MainWindow(QtWidgets.QMainWindow, BillsMixin, ProductDetailsMixin, Reports
             product.color = self.get_preset_color(product.category, product.sub_category)
             self.inventory.update_product(product)
 
-        if self.current_category and not any(names_match(self.current_category, category) for category in self.categories):
+        if self.current_category and not is_uncategorized_filter(self.current_category) and not any(
+            names_match(self.current_category, category) for category in self.categories
+        ):
             self.current_category = None
             self.current_subcategory = None
         else:
-            self.current_category = resolve_category_name(self.categories, self.current_category)
+            if not is_uncategorized_filter(self.current_category):
+                self.current_category = resolve_category_name(self.categories, self.current_category)
 
-        if category_requires_subcategory(self.subcategory_map, self.current_category):
+        if is_uncategorized_filter(self.current_category):
+            self.current_subcategory = None
+        elif category_requires_subcategory(self.subcategory_map, self.current_category):
             valid_subcategories = get_subcategories_for_category(self.subcategory_map, self.current_category)
             if self.current_subcategory and not any(
                 names_match(self.current_subcategory, subcategory)
@@ -822,6 +885,7 @@ class MainWindow(QtWidgets.QMainWindow, BillsMixin, ProductDetailsMixin, Reports
                 "Edit Categories": lambda: self.edit_categories(require_pin=False),
                 "Edit Product": lambda: self.edit_selected_product(require_pin=False),
                 "Delete Product": lambda: self.delete_selected_product(require_pin=False),
+                "Database Inspector": lambda: self.open_database_inspector(require_pin=False),
             },
             design_actions={
                 "Color Presets": lambda: self.edit_color_presets(require_pin=False),
@@ -830,6 +894,11 @@ class MainWindow(QtWidgets.QMainWindow, BillsMixin, ProductDetailsMixin, Reports
                 "Rearrange Grid Items": lambda: self.rearrange_grid_items(require_pin=False),
             },
         )
+
+    def open_database_inspector(self, require_pin: bool = True):
+        if require_pin and not self.check_pin():
+            return
+        show_database_inspector_dialog(self, self.inventory.db)
 
     def closeEvent(self, event: QtGui.QCloseEvent) -> None:
         closed_db_ids: set[int] = set()
@@ -865,7 +934,7 @@ class MainWindow(QtWidgets.QMainWindow, BillsMixin, ProductDetailsMixin, Reports
         positions = show_grid_reorder_dialog(
             self,
             working_products,
-            self.current_category,
+            format_category_filter_label(self.current_category),
             self.current_subcategory,
             self.grid_columns,
             self.grid_rows,

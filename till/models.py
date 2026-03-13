@@ -54,6 +54,19 @@ class Transaction:
 
 
 @dataclass
+class TransactionRevision:
+    id: int | None = None
+    transaction_id: int | None = None
+    items: List[TransactionItem] = field(default_factory=list)
+    total: float = 0.0
+    payment_method: str = "Cash"
+    shift_id: int | None = None
+    timestamp: datetime.datetime = field(default_factory=datetime.datetime.now)
+    edited_at: datetime.datetime | None = None
+    captured_at: datetime.datetime = field(default_factory=datetime.datetime.now)
+
+
+@dataclass
 class Shift:
     id: int | None = None
     opened_at: datetime.datetime = field(default_factory=datetime.datetime.now)

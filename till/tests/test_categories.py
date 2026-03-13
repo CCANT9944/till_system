@@ -1,10 +1,14 @@
 from interface.till.categories import (
     DEFAULT_CATEGORIES,
     DEFAULT_SUBCATEGORY_MAP,
+    format_category_filter_label,
     format_display_name,
     get_subcategories_for_category,
+    is_uncategorized_filter,
     load_categories,
     load_category_config,
+    UNCATEGORIZED_FILTER,
+    UNCATEGORIZED_LABEL,
     resolve_category_name,
     resolve_subcategory_name,
     save_categories,
@@ -78,6 +82,12 @@ def test_format_display_name_title_cases_lowercase_labels():
 def test_format_display_name_preserves_existing_casing():
     assert format_display_name("Hot Drinks") == "Hot Drinks"
     assert format_display_name("IPA") == "IPA"
+
+
+def test_uncategorized_helpers_return_shared_label():
+    assert is_uncategorized_filter(UNCATEGORIZED_FILTER) is True
+    assert is_uncategorized_filter(UNCATEGORIZED_LABEL) is True
+    assert format_category_filter_label(UNCATEGORIZED_FILTER) == UNCATEGORIZED_LABEL
 
 
 def test_invalid_category_file_falls_back_to_defaults(tmp_path):

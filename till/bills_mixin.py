@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import html
+
 from PyQt6 import QtCore, QtGui, QtWidgets
 
+from .bill_audit import build_bill_audit_entries
 from .bill_dialogs import prompt_edit_bill
 from .models import Transaction
 
@@ -11,6 +14,70 @@ CURRENCY = "£"
 
 
 class BillsMixin:
+    REMOVED_CHANGE_HTML_STYLE = (
+        "margin: 0;"
+        " padding: 2px 6px;"
+        " border-radius: 3px;"
+        " background-color: #6a2424;"
+        " color: #ffe3e3;"
+        " font-weight: 600;"
+    )
+
+    def format_bill_detail_text(self, transaction: Transaction) -> str:
+        return self.format_transaction_text(transaction)
+
+    def format_bill_audit_text(self, transaction: Transaction) -> str:
+        revisions = self.inventory.db.list_transaction_revisions(transaction.id) if transaction.id is not None else []
+        if not revisions:
+            return ""
+
+        lines = ["Saved edits", f"Previous versions stored: {len(revisions)}"]
+        for entry in build_bill_audit_entries(transaction, revisions, currency_symbol=CURRENCY):
+            lines.extend(
+                [
+                    "",
+                    f"Saved edit #{entry.edit_number} at {entry.saved_at.strftime('%Y-%m-%d %H:%M:%S') if entry.saved_at is not None else '-'}",
+                    *entry.lines,
+                ]
+            )
+        return "\n".join(lines)
+
+    def format_bill_audit_html(self, transaction: Transaction) -> str:
+        audit_text = self.format_bill_audit_text(transaction)
+        if not audit_text:
+            return ""
+
+        html_lines: list[str] = []
+        for line in audit_text.splitlines():
+            if not line:
+                html_lines.append('<div style="height: 0.55em;"></div>')
+                continue
+
+            style = "margin: 0;"
+            if line.startswith("Removed:"):
+                style = self.REMOVED_CHANGE_HTML_STYLE
+
+            html_lines.append(f'<div style="{style}">{html.escape(line)}</div>')
+
+        return (
+            '<html><body style="'
+            "font-family: Consolas, 'Courier New', monospace;"
+            " white-space: pre-wrap;"
+            '>'
+            + "".join(html_lines)
+            + "</body></html>"
+        )
+
+    def set_bill_audit_expanded(self, expanded: bool) -> None:
+        self.bill_audit_expanded = expanded
+        self.bill_audit_toggle.setArrowType(
+            QtCore.Qt.ArrowType.DownArrow if expanded else QtCore.Qt.ArrowType.RightArrow
+        )
+        self.bill_audit_content.setVisible(expanded)
+
+    def toggle_bill_audit_section(self) -> None:
+        self.set_bill_audit_expanded(not getattr(self, "bill_audit_expanded", True))
+
     def build_bills_tab(self):
         layout = QtWidgets.QVBoxLayout()
         layout.setContentsMargins(10, 10, 10, 10)
@@ -183,6 +250,40 @@ class BillsMixin:
         self.bill_detail.setStyleSheet("font-size: 10pt;")
         right_layout.addWidget(self.bill_detail, 1)
 
+        self.bill_audit_group = QtWidgets.QGroupBox()
+        self.bill_audit_group.setStyleSheet(
+            "QGroupBox { font-size: 10pt; font-weight: 600; }"
+            "QToolButton { font-size: 10pt; font-weight: 600; border: none; padding: 0; }"
+            "QToolButton:hover { color: #d1d5db; }"
+            "QTextEdit { font-size: 10pt; }"
+        )
+        self.bill_audit_group.hide()
+        audit_layout = QtWidgets.QVBoxLayout()
+        audit_layout.setContentsMargins(8, 10, 8, 8)
+        audit_layout.setSpacing(6)
+        self.bill_audit_group.setLayout(audit_layout)
+        self.bill_audit_toggle = QtWidgets.QToolButton()
+        self.bill_audit_toggle.setText("Saved edits")
+        self.bill_audit_toggle.setToolButtonStyle(QtCore.Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+        self.bill_audit_toggle.setArrowType(QtCore.Qt.ArrowType.DownArrow)
+        self.bill_audit_toggle.setCheckable(False)
+        self.bill_audit_toggle.clicked.connect(self.toggle_bill_audit_section)
+        audit_layout.addWidget(self.bill_audit_toggle, 0, QtCore.Qt.AlignmentFlag.AlignLeft)
+        self.bill_audit_content = QtWidgets.QWidget()
+        audit_content_layout = QtWidgets.QVBoxLayout()
+        audit_content_layout.setContentsMargins(0, 0, 0, 0)
+        audit_content_layout.setSpacing(0)
+        self.bill_audit_content.setLayout(audit_content_layout)
+        self.bill_audit_detail = QtWidgets.QTextEdit()
+        self.bill_audit_detail.setReadOnly(True)
+        self.bill_audit_detail.setMinimumHeight(140)
+        self.bill_audit_detail.setMaximumHeight(220)
+        self.bill_audit_detail.setStyleSheet("font-size: 10pt;")
+        audit_content_layout.addWidget(self.bill_audit_detail)
+        audit_layout.addWidget(self.bill_audit_content)
+        self.bill_audit_expanded = True
+        right_layout.addWidget(self.bill_audit_group, 0)
+
         self.bills_content_layout.addWidget(left_panel, 1)
         self.bills_content_layout.addWidget(right_panel, 1)
 
@@ -275,6 +376,9 @@ class BillsMixin:
             self.bill_status_badge.hide()
             self.bill_status_badge.setText("")
             self.bill_detail.setPlainText("No bill selected.")
+            self.bill_audit_detail.clear()
+            self.set_bill_audit_expanded(True)
+            self.bill_audit_group.hide()
             return
         if transaction.edited_at is not None:
             self.bill_status_badge.setText(
@@ -284,7 +388,17 @@ class BillsMixin:
         else:
             self.bill_status_badge.hide()
             self.bill_status_badge.setText("")
-        self.bill_detail.setPlainText(self.format_transaction_text(transaction))
+        self.bill_detail.setPlainText(self.format_bill_detail_text(transaction))
+        audit_text = self.format_bill_audit_text(transaction)
+        if audit_text:
+            audit_html = self.format_bill_audit_html(transaction)
+            self.bill_audit_detail.setHtml(audit_html)
+            self.set_bill_audit_expanded(getattr(self, "bill_audit_expanded", True))
+            self.bill_audit_group.show()
+        else:
+            self.bill_audit_detail.clear()
+            self.set_bill_audit_expanded(True)
+            self.bill_audit_group.hide()
 
     def reprint_selected_receipt(self):
         transaction = self.get_selected_bill()
@@ -590,6 +704,9 @@ class BillsMixin:
             self.bill_status_badge.hide()
             self.bill_status_badge.setText("")
             self.bill_detail.setPlainText("No completed bills yet.")
+            self.bill_audit_detail.clear()
+            self.set_bill_audit_expanded(True)
+            self.bill_audit_group.hide()
             return
 
         selected_row = 0

@@ -21,8 +21,17 @@ DEFAULT_CATEGORIES = [
 DEFAULT_SUBCATEGORY_MAP = {
     "beer": ["Draught", "Bottled"],
 }
+
+UNCATEGORIZED_FILTER = "__uncategorized__"
+UNCATEGORIZED_LABEL = "Uncategorised"
+
+
 def names_match(left: str | None, right: str | None) -> bool:
     return name_key(left) == name_key(right)
+
+
+def is_uncategorized_filter(value: str | None) -> bool:
+    return name_key(value) in {name_key(UNCATEGORIZED_FILTER), name_key(UNCATEGORIZED_LABEL)}
 
 
 def format_display_name(value: str | None) -> str:
@@ -32,6 +41,12 @@ def format_display_name(value: str | None) -> str:
     if candidate == candidate.lower():
         return candidate.title()
     return candidate
+
+
+def format_category_filter_label(value: str | None) -> str:
+    if is_uncategorized_filter(value):
+        return UNCATEGORIZED_LABEL
+    return format_display_name(value)
 
 
 def resolve_category_name(categories: list[str], category: str | None) -> str:

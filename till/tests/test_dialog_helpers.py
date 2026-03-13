@@ -117,6 +117,47 @@ def test_prompt_new_product_collects_subcategory(monkeypatch):
     assert result.sub_category == "Draught"
 
 
+def test_prompt_new_product_allows_blank_category(monkeypatch):
+    ensure_qt()
+    get_item_calls = []
+
+    monkeypatch.setattr(
+        QtWidgets.QInputDialog,
+        "getText",
+        staticmethod(lambda *args, **kwargs: ("Water", True)),
+    )
+    monkeypatch.setattr(
+        QtWidgets.QInputDialog,
+        "getDouble",
+        staticmethod(lambda *args, **kwargs: (1.25, True)),
+    )
+
+    def fake_get_item(*args, **kwargs):
+        get_item_calls.append((args, kwargs))
+        return ("Uncategorised", True)
+
+    monkeypatch.setattr(
+        QtWidgets.QInputDialog,
+        "getItem",
+        staticmethod(fake_get_item),
+    )
+
+    result = prompt_new_product(
+        None,
+        ["beer", "snacks"],
+        {"beer": ["Draught", "Bottled"]},
+        allow_empty_category=True,
+    )
+
+    assert result is not None
+    assert result.name == "Water"
+    assert result.price == pytest.approx(1.25)
+    assert result.category == ""
+    assert result.sub_category == ""
+    assert len(get_item_calls) == 1
+    assert get_item_calls[0][0][3][0] == "Uncategorised"
+
+
 def test_prompt_edit_product_returns_empty_subcategory_for_plain_category(monkeypatch):
     ensure_qt()
     product = Product(name="Chips", price=1.2, category="snacks")
@@ -144,6 +185,47 @@ def test_prompt_edit_product_returns_empty_subcategory_for_plain_category(monkey
     assert result.price == pytest.approx(1.4)
     assert result.category == "snacks"
     assert result.sub_category == ""
+
+
+def test_prompt_edit_product_allows_blank_category(monkeypatch):
+    ensure_qt()
+    product = Product(name="Tea", price=1.2, category="hot drinks")
+    get_item_calls = []
+
+    monkeypatch.setattr(
+        QtWidgets.QInputDialog,
+        "getText",
+        staticmethod(lambda *args, **kwargs: ("Tea", True)),
+    )
+    monkeypatch.setattr(
+        QtWidgets.QInputDialog,
+        "getDouble",
+        staticmethod(lambda *args, **kwargs: (1.2, True)),
+    )
+    def fake_get_item(*args, **kwargs):
+        get_item_calls.append((args, kwargs))
+        return ("Uncategorised", True)
+
+    monkeypatch.setattr(
+        QtWidgets.QInputDialog,
+        "getItem",
+        staticmethod(fake_get_item),
+    )
+
+    result = prompt_edit_product(
+        None,
+        product,
+        ["beer", "hot drinks", "snacks"],
+        {"beer": ["Draught", "Bottled"]},
+        allow_empty_category=True,
+    )
+
+    assert result is not None
+    assert result.name == "Tea"
+    assert result.price == pytest.approx(1.2)
+    assert result.category == ""
+    assert result.sub_category == ""
+    assert get_item_calls[0][0][3][0] == "Uncategorised"
 
 
 def test_show_grid_reorder_dialog_returns_board_positions(monkeypatch):

@@ -6,7 +6,13 @@ from dataclasses import dataclass
 
 from PyQt6 import QtWidgets
 
-from .categories import get_subcategories_for_category, resolve_category_name, resolve_subcategory_name
+from .categories import (
+    UNCATEGORIZED_LABEL,
+    get_subcategories_for_category,
+    is_uncategorized_filter,
+    resolve_category_name,
+    resolve_subcategory_name,
+)
 from .models import Product
 
 
@@ -16,6 +22,16 @@ class ProductDialogResult:
     price: float
     category: str
     sub_category: str
+
+
+def _build_category_options(categories: list[str], allow_empty_category: bool) -> list[str]:
+    return ([UNCATEGORIZED_LABEL] if allow_empty_category else []) + list(categories)
+
+
+def _resolve_selected_category(categories: list[str], selected_category: str) -> str:
+    if not selected_category or is_uncategorized_filter(selected_category):
+        return ""
+    return resolve_category_name(categories, selected_category)
 
 
 def _choose_subcategory(
@@ -47,6 +63,7 @@ def prompt_new_product(
     parent: QtWidgets.QWidget,
     categories: list[str],
     subcategory_map: dict[str, list[str]],
+    allow_empty_category: bool = False,
 ) -> ProductDialogResult | None:
     name, ok = QtWidgets.QInputDialog.getText(parent, "New Product", "Name:")
     if not ok or not name:
@@ -63,17 +80,20 @@ def prompt_new_product(
     if not ok2:
         return None
 
+    category_options = _build_category_options(categories, allow_empty_category)
     category, ok3 = QtWidgets.QInputDialog.getItem(
         parent,
         "Category",
-        "Select category:",
-        categories,
+        "Select category:" if not allow_empty_category else "Select category (optional):",
+        category_options,
         editable=True,
     )
     if not ok3:
         return None
 
-    category = resolve_category_name(categories, category)
+    category = _resolve_selected_category(categories, category)
+    if not category:
+        return ProductDialogResult(name=name, price=price, category="", sub_category="")
 
     sub_cat = _choose_subcategory(parent, category, subcategory_map)
     if sub_cat is None:
@@ -89,6 +109,7 @@ def prompt_edit_product(
     product: Product,
     categories: list[str],
     subcategory_map: dict[str, list[str]],
+    allow_empty_category: bool = False,
 ) -> ProductDialogResult | None:
     name, ok = QtWidgets.QInputDialog.getText(parent, "Edit Product", "Name:", text=product.name)
     if not ok or not name:
@@ -106,18 +127,28 @@ def prompt_edit_product(
     if not ok2:
         return None
 
+    category_options = _build_category_options(categories, allow_empty_category)
+    current_index = 0
+    current_category_value = product.category or (UNCATEGORIZED_LABEL if allow_empty_category else "")
+    if current_category_value in category_options:
+        current_index = category_options.index(current_category_value)
+    elif product.category in category_options:
+        current_index = category_options.index(product.category)
+
     category, ok3 = QtWidgets.QInputDialog.getItem(
         parent,
         "Category",
-        "Select category:",
-        categories,
+        "Select category:" if not allow_empty_category else "Select category (optional):",
+        category_options,
         editable=True,
-        current=categories.index(product.category) if product.category in categories else 0,
+        current=current_index,
     )
     if not ok3:
         return None
 
-    category = resolve_category_name(categories, category)
+    category = _resolve_selected_category(categories, category)
+    if not category:
+        return ProductDialogResult(name=name, price=price, category="", sub_category="")
 
     sub_cat = _choose_subcategory(parent, category, subcategory_map, product.sub_category)
     if sub_cat is None:

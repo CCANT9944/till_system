@@ -4,7 +4,16 @@ from __future__ import annotations
 
 from PyQt6 import QtCore, QtWidgets
 
-from .categories import format_display_name, resolve_category_name, resolve_subcategory_name
+from .categories import (
+    UNCATEGORIZED_FILTER,
+    UNCATEGORIZED_LABEL,
+    format_category_filter_label,
+    format_display_name,
+    is_uncategorized_filter,
+    names_match,
+    resolve_category_name,
+    resolve_subcategory_name,
+)
 from .models import Product
 
 CURRENCY = "£"
@@ -34,6 +43,18 @@ class ProductDetailsMixin:
         self.product_details_search.textChanged.connect(self.handle_product_details_search_changed)
         search_layout.addWidget(self.product_details_search, 1)
 
+        filter_label = QtWidgets.QLabel("Category")
+        filter_label.setMinimumWidth(70)
+        search_layout.addWidget(filter_label)
+
+        self.product_details_category_filter = QtWidgets.QComboBox()
+        self.product_details_category_filter.setMinimumHeight(40)
+        self.product_details_category_filter.setMinimumWidth(180)
+        self.product_details_category_filter.currentIndexChanged.connect(
+            self.handle_product_details_category_changed
+        )
+        search_layout.addWidget(self.product_details_category_filter)
+
         self.product_details_count_label = QtWidgets.QLabel("0 products")
         self.product_details_count_label.setAlignment(
             QtCore.Qt.AlignmentFlag.AlignRight | QtCore.Qt.AlignmentFlag.AlignVCenter
@@ -47,7 +68,7 @@ class ProductDetailsMixin:
 
         self.product_details_add_button = QtWidgets.QPushButton("Add")
         self.product_details_add_button.setMinimumHeight(40)
-        self.product_details_add_button.clicked.connect(self.add_product_dialog)
+        self.product_details_add_button.clicked.connect(self.add_product_from_details)
         action_layout.addWidget(self.product_details_add_button)
 
         self.product_details_edit_button = QtWidgets.QPushButton("Edit")
@@ -104,6 +125,9 @@ class ProductDetailsMixin:
     def handle_product_details_search_changed(self, _text: str) -> None:
         self.refresh_product_details()
 
+    def handle_product_details_category_changed(self, _index: int) -> None:
+        self.refresh_product_details()
+
     def handle_product_details_selection_changed(self) -> None:
         self.product_details_selected_product_id = self.get_selected_product_details_id()
 
@@ -127,6 +151,8 @@ class ProductDetailsMixin:
         if table is None:
             return
 
+        self.refresh_product_details_category_filter_options()
+
         selected_product_id = self.product_details_selected_product_id
         all_products = sorted(
             self.inventory.list_products(),
@@ -141,10 +167,12 @@ class ProductDetailsMixin:
         products = [
             product
             for product in all_products
-            if self.product_matches_details_search(product, search_query)
+            if self.product_matches_details_filter(product)
+            and self.product_matches_details_search(product, search_query)
         ]
+        has_category_filter = self.product_details_category_filter.currentData() is not None
 
-        if search_query:
+        if search_query or has_category_filter:
             self.product_details_count_label.setText(
                 f"Showing {len(products)} of {len(all_products)} products"
             )
@@ -192,8 +220,41 @@ class ProductDetailsMixin:
         )
         return any(search_query in (value or "").lower() for value in haystacks)
 
+    def product_matches_details_filter(self, product: Product) -> bool:
+        selected_filter = getattr(self, "product_details_category_filter", None)
+        if selected_filter is None:
+            return True
+
+        category_value = selected_filter.currentData()
+        if category_value is None:
+            return True
+
+        resolved_category = resolve_category_name(self.categories, product.category)
+        if is_uncategorized_filter(category_value):
+            return not resolved_category
+        return names_match(resolved_category, category_value)
+
+    def refresh_product_details_category_filter_options(self) -> None:
+        filter_combo = getattr(self, "product_details_category_filter", None)
+        if filter_combo is None:
+            return
+
+        selected_value = filter_combo.currentData()
+        filter_combo.blockSignals(True)
+        filter_combo.clear()
+        filter_combo.addItem("All categories", None)
+        for category in self.categories:
+            filter_combo.addItem(format_display_name(category), category)
+        filter_combo.addItem(UNCATEGORIZED_LABEL, UNCATEGORIZED_FILTER)
+        selected_index = filter_combo.findData(selected_value)
+        filter_combo.setCurrentIndex(selected_index if selected_index >= 0 else 0)
+        filter_combo.blockSignals(False)
+
     def resolve_product_details_category(self, product) -> str:
-        return format_display_name(resolve_category_name(self.categories, product.category))
+        category = resolve_category_name(self.categories, product.category)
+        if not category:
+            return format_category_filter_label(UNCATEGORIZED_FILTER)
+        return format_display_name(category)
 
     def resolve_product_details_subcategory(self, product, category: str) -> str:
         return format_display_name(
@@ -211,7 +272,10 @@ class ProductDetailsMixin:
                 "Select a product in Product Details first.",
             )
             return
-        self.edit_product(product)
+        self.edit_product(product, allow_empty_category=True)
+
+    def add_product_from_details(self) -> None:
+        self.add_product_dialog(allow_empty_category=True)
 
     def delete_product_from_details(self) -> None:
         if not self.check_pin():

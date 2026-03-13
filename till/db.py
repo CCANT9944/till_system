@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Iterable, List
 
 from .backup_service import BackupService
-from .models import ItemSalesSummary, Product, Shift, Transaction, TransactionItem
+from .models import ItemSalesSummary, Product, Shift, Transaction, TransactionItem, TransactionRevision
 from .payments import CARD_PAYMENT_METHOD_SQL, get_payment_method_total_sql
 
 DB_FILE = Path(__file__).parent / "till.db"
@@ -156,6 +156,65 @@ class Database:
             c.execute("ALTER TABLE transaction_items ADD COLUMN category TEXT")
         if "sub_category" not in transaction_item_cols:
             c.execute("ALTER TABLE transaction_items ADD COLUMN sub_category TEXT")
+        c.execute(
+            """
+            CREATE TABLE IF NOT EXISTS transaction_revisions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                transaction_id INTEGER NOT NULL,
+                total REAL NOT NULL,
+                timestamp TEXT NOT NULL,
+                payment_method TEXT NOT NULL DEFAULT 'Cash',
+                edited_at TEXT,
+                captured_at TEXT NOT NULL,
+                shift_id INTEGER,
+                FOREIGN KEY(transaction_id) REFERENCES transactions(id) ON DELETE CASCADE
+            )
+            """
+        )
+        c.execute("PRAGMA table_info(transaction_revisions)")
+        transaction_revision_cols = [row[1] for row in c.fetchall()]
+        if "payment_method" not in transaction_revision_cols:
+            c.execute("ALTER TABLE transaction_revisions ADD COLUMN payment_method TEXT NOT NULL DEFAULT 'Cash'")
+        if "edited_at" not in transaction_revision_cols:
+            c.execute("ALTER TABLE transaction_revisions ADD COLUMN edited_at TEXT")
+        if "captured_at" not in transaction_revision_cols:
+            c.execute(
+                "ALTER TABLE transaction_revisions ADD COLUMN captured_at TEXT NOT NULL DEFAULT ''"
+            )
+            c.execute(
+                "UPDATE transaction_revisions SET captured_at = timestamp WHERE captured_at = ''"
+            )
+        if "shift_id" not in transaction_revision_cols:
+            c.execute("ALTER TABLE transaction_revisions ADD COLUMN shift_id INTEGER")
+        c.execute(
+            """
+            CREATE TABLE IF NOT EXISTS transaction_revision_items (
+                revision_id INTEGER NOT NULL,
+                position INTEGER NOT NULL DEFAULT 0,
+                product_id INTEGER,
+                quantity INTEGER,
+                product_name TEXT,
+                unit_price REAL,
+                category TEXT,
+                sub_category TEXT,
+                FOREIGN KEY(revision_id) REFERENCES transaction_revisions(id) ON DELETE CASCADE
+            )
+            """
+        )
+        c.execute("PRAGMA table_info(transaction_revision_items)")
+        transaction_revision_item_cols = [row[1] for row in c.fetchall()]
+        if "position" not in transaction_revision_item_cols:
+            c.execute(
+                "ALTER TABLE transaction_revision_items ADD COLUMN position INTEGER NOT NULL DEFAULT 0"
+            )
+        if "product_name" not in transaction_revision_item_cols:
+            c.execute("ALTER TABLE transaction_revision_items ADD COLUMN product_name TEXT")
+        if "unit_price" not in transaction_revision_item_cols:
+            c.execute("ALTER TABLE transaction_revision_items ADD COLUMN unit_price REAL")
+        if "category" not in transaction_revision_item_cols:
+            c.execute("ALTER TABLE transaction_revision_items ADD COLUMN category TEXT")
+        if "sub_category" not in transaction_revision_item_cols:
+            c.execute("ALTER TABLE transaction_revision_items ADD COLUMN sub_category TEXT")
         self.conn.commit()
         self._migrate_legacy_transactions_to_shifts()
         self.get_or_create_open_shift()
@@ -468,6 +527,128 @@ class Database:
             )
         return cleaned_items
 
+    def _insert_transaction_items(
+        self,
+        cursor: sqlite3.Cursor,
+        transaction_id: int,
+        items: list[TransactionItem],
+    ) -> None:
+        for item in items:
+            cursor.execute(
+                """
+                INSERT INTO transaction_items (
+                    transaction_id,
+                    product_id,
+                    quantity,
+                    product_name,
+                    unit_price,
+                    category,
+                    sub_category
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    transaction_id,
+                    item.product_id,
+                    item.quantity,
+                    item.product_name,
+                    item.unit_price,
+                    item.category,
+                    item.sub_category,
+                ),
+            )
+
+    def _insert_transaction_revision_items(
+        self,
+        cursor: sqlite3.Cursor,
+        revision_id: int,
+        items: list[TransactionItem],
+    ) -> None:
+        for position, item in enumerate(items):
+            cursor.execute(
+                """
+                INSERT INTO transaction_revision_items (
+                    revision_id,
+                    position,
+                    product_id,
+                    quantity,
+                    product_name,
+                    unit_price,
+                    category,
+                    sub_category
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    revision_id,
+                    position,
+                    item.product_id,
+                    item.quantity,
+                    item.product_name,
+                    item.unit_price,
+                    item.category,
+                    item.sub_category,
+                ),
+            )
+
+    def _create_transaction_revision(
+        self,
+        transaction: Transaction,
+        *,
+        captured_at: datetime.datetime,
+        commit: bool = True,
+    ) -> int:
+        c = self.conn.cursor()
+        c.execute(
+            """
+            INSERT INTO transaction_revisions (
+                transaction_id,
+                total,
+                timestamp,
+                payment_method,
+                edited_at,
+                captured_at,
+                shift_id
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                transaction.id,
+                transaction.total,
+                transaction.timestamp.isoformat(),
+                transaction.payment_method,
+                transaction.edited_at.isoformat() if transaction.edited_at is not None else None,
+                captured_at.isoformat(),
+                transaction.shift_id,
+            ),
+        )
+        revision_id = c.lastrowid
+        self._insert_transaction_revision_items(c, revision_id, transaction.items)
+        if commit:
+            self.conn.commit()
+        return revision_id
+
+    def _build_transaction_item(self, row) -> TransactionItem:
+        product_id, quantity, product_name, unit_price, category, sub_category = row
+        item_name = product_name or ""
+        item_price = unit_price
+        if (not item_name or item_price is None) and product_id is not None:
+            product = next((value for value in self.list_products() if value.id == product_id), None)
+            if product is not None:
+                if not item_name:
+                    item_name = product.name
+                if item_price is None:
+                    item_price = product.price
+                if not category:
+                    category = product.category
+                if not sub_category:
+                    sub_category = product.sub_category
+        return TransactionItem(
+            product_id=product_id,
+            product_name=item_name,
+            unit_price=item_price or 0.0,
+            quantity=quantity or 0,
+            category=category or "",
+            sub_category=sub_category or "",
+        )
+
     def record_transaction(self, transaction: Transaction) -> int:
         if not transaction.payment_method:
             raise ValueError("Payment method is required.")
@@ -482,29 +663,7 @@ class Database:
                 (total, transaction.timestamp.isoformat(), transaction.payment_method, None, shift.id),
             )
             tid = c.lastrowid
-            for item in cleaned_items:
-                c.execute(
-                    """
-                    INSERT INTO transaction_items (
-                        transaction_id,
-                        product_id,
-                        quantity,
-                        product_name,
-                        unit_price,
-                        category,
-                        sub_category
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?)
-                    """,
-                    (
-                        tid,
-                        item.product_id,
-                        item.quantity,
-                        item.product_name,
-                        item.unit_price,
-                        item.category,
-                        item.sub_category,
-                    ),
-                )
+            self._insert_transaction_items(c, tid, cleaned_items)
             self._sync_shift_totals(shift.id, commit=False)
 
         transaction.items = cleaned_items
@@ -530,34 +689,13 @@ class Database:
 
         with self._atomic_write():
             c = self.conn.cursor()
+            self._create_transaction_revision(current_transaction, captured_at=edited_at, commit=False)
             c.execute(
                 "UPDATE transactions SET total = ?, payment_method = ?, timestamp = ?, edited_at = ? WHERE id = ?",
                 (total, transaction.payment_method, updated_timestamp.isoformat(), edited_at.isoformat(), transaction.id),
             )
             c.execute("DELETE FROM transaction_items WHERE transaction_id = ?", (transaction.id,))
-            for item in cleaned_items:
-                c.execute(
-                    """
-                    INSERT INTO transaction_items (
-                        transaction_id,
-                        product_id,
-                        quantity,
-                        product_name,
-                        unit_price,
-                        category,
-                        sub_category
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?)
-                    """,
-                    (
-                        transaction.id,
-                        item.product_id,
-                        item.quantity,
-                        item.product_name,
-                        item.unit_price,
-                        item.category,
-                        item.sub_category,
-                    ),
-                )
+            self._insert_transaction_items(c, transaction.id, cleaned_items)
             if current_transaction.shift_id is not None:
                 self._sync_shift_totals(current_transaction.shift_id, commit=False)
 
@@ -597,34 +735,47 @@ class Database:
             """,
             (transaction_id,),
         )
+        return [self._build_transaction_item(row) for row in c.fetchall()]
+
+    def get_transaction_revision_items(self, revision_id: int) -> List[TransactionItem]:
+        c = self.conn.cursor()
+        c.execute(
+            """
+            SELECT product_id, quantity, product_name, unit_price, category, sub_category
+            FROM transaction_revision_items
+            WHERE revision_id = ?
+            ORDER BY position ASC, rowid ASC
+            """,
+            (revision_id,),
+        )
+        return [self._build_transaction_item(row) for row in c.fetchall()]
+
+    def list_transaction_revisions(self, transaction_id: int) -> List[TransactionRevision]:
+        c = self.conn.cursor()
+        c.execute(
+            """
+            SELECT id, transaction_id, total, timestamp, payment_method, edited_at, captured_at, shift_id
+            FROM transaction_revisions
+            WHERE transaction_id = ?
+            ORDER BY id ASC
+            """,
+            (transaction_id,),
+        )
         rows = c.fetchall()
-        items: List[TransactionItem] = []
-        for row in rows:
-            product_id, quantity, product_name, unit_price, category, sub_category = row
-            item_name = product_name or ""
-            item_price = unit_price
-            if (not item_name or item_price is None) and product_id is not None:
-                product = next((value for value in self.list_products() if value.id == product_id), None)
-                if product is not None:
-                    if not item_name:
-                        item_name = product.name
-                    if item_price is None:
-                        item_price = product.price
-                    if not category:
-                        category = product.category
-                    if not sub_category:
-                        sub_category = product.sub_category
-            items.append(
-                TransactionItem(
-                    product_id=product_id,
-                    product_name=item_name,
-                    unit_price=item_price or 0.0,
-                    quantity=quantity or 0,
-                    category=category or "",
-                    sub_category=sub_category or "",
-                )
+        return [
+            TransactionRevision(
+                id=row[0],
+                transaction_id=row[1],
+                items=self.get_transaction_revision_items(row[0]),
+                total=float(row[2] or 0.0),
+                payment_method=row[4] or "Cash",
+                shift_id=row[7],
+                timestamp=datetime.datetime.fromisoformat(row[3]),
+                edited_at=datetime.datetime.fromisoformat(row[5]) if row[5] else None,
+                captured_at=datetime.datetime.fromisoformat(row[6]),
             )
-        return items
+            for row in rows
+        ]
 
     def list_transactions(
         self,
